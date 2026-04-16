@@ -50,7 +50,7 @@ export default function Deliveries() {
       p_branch_id: branchId,
       p_date: deliveryDate,
     });
-    const leftover: Record<string, number> = data ?? {};
+    const leftover: Record<string, number> = (data as Record<string, number>) ?? {};
     const newItems = categories.map(c => ({
       category_id: c.id,
       quantity: leftover[c.id] ?? 0,

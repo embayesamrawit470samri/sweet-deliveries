@@ -35,7 +35,7 @@ export default function UserManagement() {
   useEffect(() => { load(); }, []);
 
   const addRole = async (userId: string, role: string) => {
-    const { error } = await supabase.from('user_roles').insert({ user_id: userId, role });
+    const { error } = await supabase.from('user_roles').insert({ user_id: userId, role } as any);
     if (error) {
       if (error.code === '23505') { toast({ title: 'Already has this role' }); return; }
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
