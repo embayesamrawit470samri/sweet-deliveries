@@ -53,6 +53,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          photo_url: string | null
           price_etb: number
           updated_at: string
         }
@@ -61,6 +62,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          photo_url?: string | null
           price_etb: number
           updated_at?: string
         }
@@ -69,6 +71,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          photo_url?: string | null
           price_etb?: number
           updated_at?: string
         }
@@ -105,7 +108,8 @@ export type Database = {
       }
       deliveries: {
         Row: {
-          branch_id: string
+          agent_id: string | null
+          branch_id: string | null
           created_at: string
           created_by: string
           delivery_date: string
@@ -113,7 +117,8 @@ export type Database = {
           status: string
         }
         Insert: {
-          branch_id: string
+          agent_id?: string | null
+          branch_id?: string | null
           created_at?: string
           created_by: string
           delivery_date?: string
@@ -121,7 +126,8 @@ export type Database = {
           status?: string
         }
         Update: {
-          branch_id?: string
+          agent_id?: string | null
+          branch_id?: string | null
           created_at?: string
           created_by?: string
           delivery_date?: string
@@ -141,6 +147,8 @@ export type Database = {
       delivery_items: {
         Row: {
           category_id: string
+          defective_shift1: number
+          defective_shift2: number
           delivery_id: string
           id: string
           price_at_delivery: number
@@ -150,6 +158,8 @@ export type Database = {
         }
         Insert: {
           category_id: string
+          defective_shift1?: number
+          defective_shift2?: number
           delivery_id: string
           id?: string
           price_at_delivery: number
@@ -159,6 +169,8 @@ export type Database = {
         }
         Update: {
           category_id?: string
+          defective_shift1?: number
+          defective_shift2?: number
           delivery_id?: string
           id?: string
           price_at_delivery?: number
@@ -257,28 +269,82 @@ export type Database = {
       }
       profiles: {
         Row: {
+          branch_name: string | null
+          branch_phone: string | null
           created_at: string
           full_name: string | null
           id: string
+          manager_id: string | null
           phone: string | null
+          shift1_name: string | null
+          shift2_name: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          branch_name?: string | null
+          branch_phone?: string | null
           created_at?: string
           full_name?: string | null
           id?: string
+          manager_id?: string | null
           phone?: string | null
+          shift1_name?: string | null
+          shift2_name?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          branch_name?: string | null
+          branch_phone?: string | null
           created_at?: string
           full_name?: string | null
           id?: string
+          manager_id?: string | null
           phone?: string | null
+          shift1_name?: string | null
+          shift2_name?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          photo_url: string | null
+          price_etb: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          photo_url?: string | null
+          price_etb?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          photo_url?: string | null
+          price_etb?: number | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -306,7 +372,7 @@ export type Database = {
     }
     Functions: {
       calculate_opening_stock: {
-        Args: { p_branch_id: string; p_date: string }
+        Args: { p_agent_id: string; p_date: string }
         Returns: Json
       }
       has_role: {
