@@ -3,122 +3,239 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+type Period = 'daily' | 'weekly' | 'monthly';
+
+function startOfPeriod(period: Period, ref: Date): Date {
+  const d = new Date(ref);
+  if (period === 'daily') return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (period === 'weekly') {
+    const day = d.getDay();
+    const diff = (day + 6) % 7; // Monday start
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff);
+  }
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function endOfPeriod(period: Period, ref: Date): Date {
+  const start = startOfPeriod(period, ref);
+  const e = new Date(start);
+  if (period === 'daily') e.setDate(e.getDate() + 1);
+  else if (period === 'weekly') e.setDate(e.getDate() + 7);
+  else e.setMonth(e.getMonth() + 1);
+  return e;
+}
 
 export default function Reports() {
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   const [deliveryData, setDeliveryData] = useState<any[]>([]);
+  const [agentMap, setAgentMap] = useState<Record<string, { branch_name: string | null; full_name: string | null }>>({});
+  const [orderPeriod, setOrderPeriod] = useState<Period>('daily');
+  const [orderRefDate, setOrderRefDate] = useState(new Date().toISOString().split('T')[0]);
   const [orderData, setOrderData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadReports = async () => {
+  const loadDeliveries = async () => {
     setLoading(true);
-    const [dRes, oRes] = await Promise.all([
-      supabase.from('deliveries')
-        .select('*, branches(name), delivery_items(*, categories(name))')
-        .gte('delivery_date', dateFrom)
-        .lte('delivery_date', dateTo)
-        .order('delivery_date'),
-      supabase.from('orders')
-        .select('*, order_items(*, categories(name))')
-        .gte('created_at', dateFrom + 'T00:00:00')
-        .lte('created_at', dateTo + 'T23:59:59')
-        .order('created_at'),
-    ]);
-    setDeliveryData(dRes.data ?? []);
-    setOrderData(oRes.data ?? []);
+    const { data } = await supabase
+      .from('deliveries')
+      .select('*, delivery_items(*, categories(name))')
+      .gte('delivery_date', dateFrom)
+      .lte('delivery_date', dateTo)
+      .order('delivery_date');
+    const list = (data as any) ?? [];
+    setDeliveryData(list);
+
+    const ids = Array.from(new Set(list.map((d: any) => d.agent_id).filter(Boolean)));
+    if (ids.length) {
+      const { data: profiles } = await supabase.from('profiles').select('user_id, branch_name, full_name').in('user_id', ids as string[]);
+      const map: Record<string, any> = {};
+      (profiles ?? []).forEach((p: any) => { map[p.user_id] = p; });
+      setAgentMap(map);
+    } else {
+      setAgentMap({});
+    }
     setLoading(false);
   };
 
-  useEffect(() => { loadReports(); }, [dateFrom, dateTo]);
+  const loadOrders = async () => {
+    const ref = new Date(orderRefDate);
+    const start = startOfPeriod(orderPeriod, ref);
+    const end = endOfPeriod(orderPeriod, ref);
+    const { data } = await supabase
+      .from('orders')
+      .select('*, order_items(*, categories(name))')
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString())
+      .order('created_at');
+    setOrderData((data as any) ?? []);
+  };
 
-  // Aggregate calculations
-  const totalDelivered = deliveryData.reduce((sum, d) =>
+  useEffect(() => { loadDeliveries(); }, [dateFrom, dateTo]);
+  useEffect(() => { loadOrders(); }, [orderPeriod, orderRefDate]);
+
+  // Aggregations for deliveries
+  const deliveryRows = deliveryData.flatMap(d =>
+    (d.delivery_items ?? []).map((di: any) => {
+      const sold = di.sold_shift1 + di.sold_shift2;
+      const defective = (di.defective_shift1 ?? 0) + (di.defective_shift2 ?? 0);
+      const leftover = Math.max(di.quantity - sold - defective, 0);
+      const income = sold * Number(di.price_at_delivery);
+      return {
+        date: d.delivery_date,
+        branch: agentMap[d.agent_id]?.branch_name ?? '—',
+        item: di.categories?.name ?? '—',
+        delivered: di.quantity,
+        sold,
+        defective,
+        leftover,
+        income,
+      };
+    })
+  );
+
+  const totalDelivered = deliveryRows.reduce((s, r) => s + r.delivered * 0, 0); // value below
+  const totalSoldValue = deliveryRows.reduce((s, r) => s + r.income, 0);
+  const totalDefective = deliveryRows.reduce((s, r) => s + r.defective, 0);
+  const totalLeftover = deliveryRows.reduce((s, r) => s + r.leftover, 0);
+  const deliveredValue = deliveryData.reduce((sum, d) =>
     sum + (d.delivery_items?.reduce((s: number, di: any) => s + di.quantity * Number(di.price_at_delivery), 0) ?? 0), 0);
 
-  const totalSold = deliveryData.reduce((sum, d) =>
-    sum + (d.delivery_items?.reduce((s: number, di: any) =>
-      s + (di.sold_shift1 + di.sold_shift2) * Number(di.price_at_delivery), 0) ?? 0), 0);
+  const totalOrdersValue = orderData.reduce((sum, o) => sum + Number(o.total_etb), 0);
 
-  const totalOrders = orderData.reduce((sum, o) => sum + Number(o.total_etb), 0);
-  const totalLeftoverValue = totalDelivered - totalSold;
+  const downloadDeliveryPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Deliveries Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Period: ${dateFrom} to ${dateTo}`, 14, 22);
+    doc.text(`Delivered Value: ${deliveredValue.toFixed(2)} ETB | Sold Value: ${totalSoldValue.toFixed(2)} ETB | Defective Qty: ${totalDefective} | Leftover Qty: ${totalLeftover}`, 14, 28);
+    autoTable(doc, {
+      startY: 34,
+      head: [['Date', 'Agent/Branch', 'Item', 'Delivered', 'Sold', 'Defective', 'Leftover', 'Income (ETB)']],
+      body: deliveryRows.map(r => [r.date, r.branch, r.item, r.delivered, r.sold, r.defective, r.leftover, r.income.toFixed(2)]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [180, 100, 50] },
+    });
+    doc.save(`deliveries_${dateFrom}_to_${dateTo}.pdf`);
+  };
+
+  const downloadOrdersPdf = () => {
+    const doc = new jsPDF();
+    const ref = new Date(orderRefDate);
+    const start = startOfPeriod(orderPeriod, ref);
+    const end = endOfPeriod(orderPeriod, ref);
+    const endDisp = new Date(end); endDisp.setDate(endDisp.getDate() - 1);
+    doc.setFontSize(16);
+    doc.text(`Orders Report (${orderPeriod})`, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`From ${start.toISOString().split('T')[0]} to ${endDisp.toISOString().split('T')[0]}`, 14, 22);
+    doc.text(`Total Orders: ${orderData.length} | Total Value: ${totalOrdersValue.toFixed(2)} ETB`, 14, 28);
+    autoTable(doc, {
+      startY: 34,
+      head: [['Date', 'Customer', 'Phone', 'Items', 'Total (ETB)', 'Status']],
+      body: orderData.map(o => [
+        new Date(o.created_at).toLocaleDateString(),
+        o.customer_name,
+        o.phone ?? '-',
+        (o.order_items ?? []).map((oi: any) => `${oi.categories?.name} x${oi.quantity}`).join(', '),
+        Number(o.total_etb).toFixed(2),
+        o.status,
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [180, 100, 50] },
+    });
+    doc.save(`orders_${orderPeriod}_${orderRefDate}.pdf`);
+  };
 
   return (
     <div className="animate-fade-in space-y-4">
       <h2 className="font-serif text-2xl">Reports</h2>
-      <div className="flex flex-wrap gap-4">
-        <div><Label>From</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
-        <div><Label>To</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Delivered Value</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold">{totalDelivered.toFixed(2)} ETB</div></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Sold Value</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-success">{totalSold.toFixed(2)} ETB</div></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Order Value</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold">{totalOrders.toFixed(2)} ETB</div></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Unsold Value</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-destructive">{totalLeftoverValue.toFixed(2)} ETB</div></CardContent>
-        </Card>
-      </div>
 
       <Tabs defaultValue="deliveries">
         <TabsList>
-          <TabsTrigger value="deliveries">Deliveries & Sales</TabsTrigger>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="deliveries">Deliveries (income)</TabsTrigger>
+          <TabsTrigger value="orders">Orders (daily/weekly/monthly)</TabsTrigger>
         </TabsList>
-        <TabsContent value="deliveries">
+
+        <TabsContent value="deliveries" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div><Label>From</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
+            <div><Label>To</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
+            <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PDF</Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Delivered Value</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{deliveredValue.toFixed(2)} ETB</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Sold Value (Income)</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-success">{totalSoldValue.toFixed(2)} ETB</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Defective (qty)</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-destructive">{totalDefective}</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Leftover (qty)</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{totalLeftover}</div></CardContent></Card>
+          </div>
+
           <Card>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Branch</TableHead>
+                    <TableHead>Agent/Branch</TableHead>
                     <TableHead>Item</TableHead>
                     <TableHead>Delivered</TableHead>
-                    <TableHead>Sold (S1+S2)</TableHead>
+                    <TableHead>Sold</TableHead>
+                    <TableHead>Defective</TableHead>
                     <TableHead>Leftover</TableHead>
                     <TableHead>Income (ETB)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>
-                  ) : deliveryData.flatMap(d =>
-                    (d.delivery_items ?? []).map((di: any) => {
-                      const sold = di.sold_shift1 + di.sold_shift2;
-                      const leftover = di.quantity - sold;
-                      return (
-                        <TableRow key={di.id}>
-                          <TableCell>{d.delivery_date}</TableCell>
-                          <TableCell>{d.branches?.name}</TableCell>
-                          <TableCell>{di.categories?.name}</TableCell>
-                          <TableCell>{di.quantity}</TableCell>
-                          <TableCell>{di.sold_shift1} + {di.sold_shift2} = {sold}</TableCell>
-                          <TableCell>{leftover}</TableCell>
-                          <TableCell>{(sold * Number(di.price_at_delivery)).toFixed(2)}</TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
+                    <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                  ) : deliveryRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No deliveries in this range</TableCell></TableRow>
+                  ) : deliveryRows.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{r.date}</TableCell>
+                      <TableCell>{r.branch}</TableCell>
+                      <TableCell>{r.item}</TableCell>
+                      <TableCell>{r.delivered}</TableCell>
+                      <TableCell>{r.sold}</TableCell>
+                      <TableCell className="text-destructive">{r.defective}</TableCell>
+                      <TableCell>{r.leftover}</TableCell>
+                      <TableCell>{r.income.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="orders">
+
+        <TabsContent value="orders" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label>Period</Label>
+              <select className="block rounded-md border bg-background px-3 py-2 text-sm" value={orderPeriod} onChange={e => setOrderPeriod(e.target.value as Period)}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div><Label>Reference date</Label><Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} /></div>
+            <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PDF</Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Orders</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{orderData.length}</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Value</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-primary">{totalOrdersValue.toFixed(2)} ETB</div></CardContent></Card>
+          </div>
+
           <Card>
             <CardContent className="p-0">
               <Table>
@@ -126,16 +243,20 @@ export default function Reports() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Phone</TableHead>
                     <TableHead>Items</TableHead>
                     <TableHead>Total (ETB)</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orderData.map(o => (
+                  {orderData.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No orders in this period</TableCell></TableRow>
+                  ) : orderData.map(o => (
                     <TableRow key={o.id}>
                       <TableCell>{new Date(o.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>{o.customer_name}</TableCell>
+                      <TableCell>{o.phone ?? '-'}</TableCell>
                       <TableCell>
                         {o.order_items?.map((oi: any) => `${oi.categories?.name} x${oi.quantity}`).join(', ')}
                       </TableCell>

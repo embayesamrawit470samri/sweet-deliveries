@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,22 +16,35 @@ interface UserProfile {
   user_id: string;
   full_name: string | null;
   phone: string | null;
+  branch_name: string | null;
+  branch_phone: string | null;
+  shift1_name: string | null;
+  shift2_name: string | null;
+  manager_id: string | null;
   roles: string[];
 }
 
 type Role = 'admin' | 'manager' | 'agent' | 'customer';
 
 export default function UserManagement() {
+  const { hasRole } = useAuth();
   const { toast } = useToast();
+  const isAdmin = hasRole('admin');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '', role: 'agent' as Role });
+  const [form, setForm] = useState({
+    email: '', password: '', full_name: '', phone: '',
+    role: (isAdmin ? 'agent' : 'agent') as Role,
+    branch_name: '', branch_phone: '', shift1_name: '', shift2_name: '',
+  });
 
   const load = async () => {
-    const { data: profiles } = await supabase.from('profiles').select('user_id, full_name, phone');
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, phone, branch_name, branch_phone, shift1_name, shift2_name, manager_id');
     const { data: roles } = await supabase.from('user_roles').select('user_id, role');
     if (profiles) {
       const roleMap: Record<string, string[]> = {};
@@ -38,7 +52,7 @@ export default function UserManagement() {
         if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
         roleMap[r.user_id].push(r.role);
       });
-      setUsers(profiles.map(p => ({ ...p, roles: roleMap[p.user_id] ?? [] })));
+      setUsers(profiles.map((p: any) => ({ ...p, roles: roleMap[p.user_id] ?? [] })));
     }
     setLoading(false);
   };
@@ -61,10 +75,12 @@ export default function UserManagement() {
       toast({ title: 'Email and password (min 6 chars) required', variant: 'destructive' });
       return;
     }
+    if (form.role === 'agent' && !form.branch_name) {
+      toast({ title: 'Branch name is required for agents', variant: 'destructive' });
+      return;
+    }
     setCreating(true);
-    const { data, error } = await supabase.functions.invoke('admin-create-user', {
-      body: form,
-    });
+    const { data, error } = await supabase.functions.invoke('admin-create-user', { body: form });
     setCreating(false);
     if (error || (data as any)?.error) {
       toast({ title: 'Failed to create user', description: error?.message ?? (data as any)?.error, variant: 'destructive' });
@@ -72,7 +88,10 @@ export default function UserManagement() {
     }
     toast({ title: 'User created', description: `${form.email} added as ${form.role}` });
     setOpen(false);
-    setForm({ email: '', password: '', full_name: '', phone: '', role: 'agent' });
+    setForm({
+      email: '', password: '', full_name: '', phone: '',
+      role: 'agent', branch_name: '', branch_phone: '', shift1_name: '', shift2_name: '',
+    });
     load();
   };
 
@@ -86,20 +105,34 @@ export default function UserManagement() {
     return map[r] ?? '';
   };
 
+  const availableRoles: Role[] = isAdmin ? ['admin', 'manager', 'agent', 'customer'] : ['agent'];
+
   return (
     <div className="animate-fade-in space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-serif text-2xl">User Management</h2>
+        <div>
+          <h2 className="font-serif text-2xl">User Management</h2>
+          <p className="text-sm text-muted-foreground">{isAdmin ? 'Create admins, managers, agents and customers.' : 'Create and manage your agents.'}</p>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button><UserPlus className="mr-2 h-4 w-4" /> Create User</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New User</DialogTitle>
-              <DialogDescription>Create a manager, agent, admin or customer account.</DialogDescription>
+              <DialogDescription>{isAdmin ? 'Create any role.' : 'Create an agent assigned to you.'}</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Select value={form.role} onValueChange={(v: Role) => setForm({ ...form, role: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cu-name">Full Name</Label>
                 <Input id="cu-name" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="Jane Doe" />
@@ -116,18 +149,28 @@ export default function UserManagement() {
                 <Label htmlFor="cu-phone">Phone (optional)</Label>
                 <Input id="cu-phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+251..." />
               </div>
-              <div className="space-y-1.5">
-                <Label>Role</Label>
-                <Select value={form.role} onValueChange={(v: Role) => setForm({ ...form, role: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="agent">Agent</SelectItem>
-                    <SelectItem value="customer">Customer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+              {form.role === 'agent' && (
+                <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Branch / Shift Info</p>
+                  <div className="space-y-1.5">
+                    <Label>Branch Name</Label>
+                    <Input value={form.branch_name} onChange={e => setForm({ ...form, branch_name: e.target.value })} placeholder="e.g. Main Street Outlet" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Branch Phone</Label>
+                    <Input value={form.branch_phone} onChange={e => setForm({ ...form, branch_phone: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Shift 1 Name</Label>
+                    <Input value={form.shift1_name} onChange={e => setForm({ ...form, shift1_name: e.target.value })} placeholder="e.g. Morning - Abebe" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Shift 2 Name (optional)</Label>
+                    <Input value={form.shift2_name} onChange={e => setForm({ ...form, shift2_name: e.target.value })} placeholder="e.g. Evening - Mulu" />
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -142,33 +185,43 @@ export default function UserManagement() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Branch</TableHead>
+                <TableHead>Shifts</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Roles</TableHead>
-                <TableHead>Add Role</TableHead>
+                {isAdmin && <TableHead>Add Role</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>
               ) : users.map(u => (
                 <TableRow key={u.user_id}>
                   <TableCell className="font-medium">{u.full_name || 'Unnamed'}</TableCell>
-                  <TableCell>{u.phone ?? '-'}</TableCell>
+                  <TableCell>{u.branch_name ?? '-'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {u.shift1_name && <div>S1: {u.shift1_name}</div>}
+                    {u.shift2_name && <div>S2: {u.shift2_name}</div>}
+                    {!u.shift1_name && !u.shift2_name && '-'}
+                  </TableCell>
+                  <TableCell>{u.phone ?? u.branch_phone ?? '-'}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {u.roles.map(r => <Badge key={r} className={roleColor(r)}>{r}</Badge>)}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Select onValueChange={val => addRole(u.user_id, val)}>
-                      <SelectTrigger className="w-32"><SelectValue placeholder="Add role" /></SelectTrigger>
-                      <SelectContent>
-                        {['admin', 'manager', 'agent', 'customer']
-                          .filter(r => !u.roles.includes(r))
-                          .map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
+                  {isAdmin && (
+                    <TableCell>
+                      <Select onValueChange={val => addRole(u.user_id, val)}>
+                        <SelectTrigger className="w-32"><SelectValue placeholder="Add role" /></SelectTrigger>
+                        <SelectContent>
+                          {(['admin', 'manager', 'agent', 'customer'] as const)
+                            .filter(r => !u.roles.includes(r))
+                            .map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

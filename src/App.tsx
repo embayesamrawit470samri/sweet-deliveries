@@ -8,7 +8,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Categories from "./pages/Categories";
-import Branches from "./pages/Branches";
+import Services from "./pages/Services";
 import Deliveries from "./pages/Deliveries";
 import AgentDeliveries from "./pages/AgentDeliveries";
 import Orders from "./pages/Orders";
@@ -38,7 +38,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
-            <Route path="/branches" element={<ProtectedRoute><Branches /></ProtectedRoute>} />
+            <Route path="/services" element={<ProtectedRoute><Services /></ProtectedRoute>} />
             <Route path="/deliveries" element={<ProtectedRoute><Deliveries /></ProtectedRoute>} />
             <Route path="/agent/deliveries" element={<ProtectedRoute><AgentDeliveries /></ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
