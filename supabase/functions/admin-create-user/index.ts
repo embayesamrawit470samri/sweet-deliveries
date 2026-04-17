@@ -20,7 +20,6 @@ Deno.serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     if (!token) return json({ error: "Missing auth" }, 401);
 
-    // Verify caller is admin
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -28,20 +27,28 @@ Deno.serve(async (req) => {
     if (userErr || !userData.user) return json({ error: "Invalid token" }, 401);
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: isAdmin } = await admin.rpc("has_role", {
-      _user_id: userData.user.id,
-      _role: "admin",
-    });
-    if (!isAdmin) return json({ error: "Forbidden: admin only" }, 403);
+
+    const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userData.user.id, _role: "admin" });
+    const { data: isManager } = await admin.rpc("has_role", { _user_id: userData.user.id, _role: "manager" });
+
+    if (!isAdmin && !isManager) return json({ error: "Forbidden: admin or manager only" }, 403);
 
     const body = await req.json();
-    const { email, password, full_name, phone, role } = body as {
+    const {
+      email, password, full_name, phone, role,
+      branch_name, branch_phone, shift1_name, shift2_name,
+    } = body as {
       email: string; password: string; full_name?: string; phone?: string; role: Role;
+      branch_name?: string; branch_phone?: string; shift1_name?: string; shift2_name?: string;
     };
 
     if (!email || !password || !role) return json({ error: "email, password, role required" }, 400);
 
-    // Create user (auto-confirmed)
+    // Managers may only create agents
+    if (!isAdmin && role !== "agent") {
+      return json({ error: "Managers can only create agents" }, 403);
+    }
+
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
       password,
@@ -51,15 +58,23 @@ Deno.serve(async (req) => {
     if (createErr || !created.user) return json({ error: createErr?.message ?? "Create failed" }, 400);
 
     const newId = created.user.id;
+    const managerId = role === "agent" ? userData.user.id : null;
 
-    // Update profile phone if provided
-    if (phone) {
-      await admin.from("profiles").update({ phone, full_name: full_name ?? null }).eq("user_id", newId);
-    } else if (full_name) {
-      await admin.from("profiles").update({ full_name }).eq("user_id", newId);
+    const profileUpdate: Record<string, unknown> = {};
+    if (full_name !== undefined) profileUpdate.full_name = full_name;
+    if (phone !== undefined) profileUpdate.phone = phone || null;
+    if (role === "agent") {
+      profileUpdate.branch_name = branch_name ?? null;
+      profileUpdate.branch_phone = branch_phone ?? null;
+      profileUpdate.shift1_name = shift1_name ?? null;
+      profileUpdate.shift2_name = shift2_name ?? null;
+      profileUpdate.manager_id = managerId;
     }
 
-    // Add the requested role (handle_new_user already added 'customer')
+    if (Object.keys(profileUpdate).length > 0) {
+      await admin.from("profiles").update(profileUpdate).eq("user_id", newId);
+    }
+
     if (role !== "customer") {
       await admin.from("user_roles").insert({ user_id: newId, role });
     }
