@@ -4,15 +4,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Truck } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
-interface Branch { id: string; name: string; }
+interface Agent { user_id: string; full_name: string | null; branch_name: string | null; }
 interface Category { id: string; name: string; price_etb: number; }
 interface DeliveryItem { category_id: string; quantity: number; }
 
@@ -20,36 +20,44 @@ export default function Deliveries() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [deliveries, setDeliveries] = useState<any[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState('');
+  const [selectedAgent, setSelectedAgent] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
   const [items, setItems] = useState<DeliveryItem[]>([]);
   const [autoFilled, setAutoFilled] = useState(false);
 
   const load = async () => {
-    const [dRes, bRes, cRes] = await Promise.all([
-      supabase.from('deliveries').select('*, branches(name), delivery_items(*, categories(name))').order('delivery_date', { ascending: false }),
-      supabase.from('branches').select('id, name').order('name'),
+    const [dRes, aRes, cRes] = await Promise.all([
+      supabase.from('deliveries').select('*, delivery_items(*, categories(name))').order('delivery_date', { ascending: false }),
+      supabase.from('profiles').select('user_id, full_name, branch_name').not('branch_name', 'is', null).order('branch_name'),
       supabase.from('categories').select('id, name, price_etb').order('name'),
     ]);
-    setDeliveries(dRes.data ?? []);
-    setBranches(bRes.data ?? []);
+
+    // Fetch agent names map for displaying alongside delivery rows
+    const agentMap: Record<string, Agent> = {};
+    (aRes.data ?? []).forEach((a: any) => { agentMap[a.user_id] = a; });
+    const enrichedDeliveries = (dRes.data ?? []).map((d: any) => ({
+      ...d,
+      agent: d.agent_id ? agentMap[d.agent_id] : null,
+    }));
+
+    setDeliveries(enrichedDeliveries);
+    setAgents((aRes.data as any) ?? []);
     setCategories(cRes.data ?? []);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const handleBranchSelect = async (branchId: string) => {
-    setSelectedBranch(branchId);
-    // Auto-fill from previous day leftovers
+  const handleAgentSelect = async (agentId: string) => {
+    setSelectedAgent(agentId);
     const { data } = await supabase.rpc('calculate_opening_stock', {
-      p_branch_id: branchId,
+      p_agent_id: agentId,
       p_date: deliveryDate,
-    });
+    } as any);
     const leftover: Record<string, number> = (data as Record<string, number>) ?? {};
     const newItems = categories.map(c => ({
       category_id: c.id,
@@ -65,15 +73,15 @@ export default function Deliveries() {
 
   const handleCreate = async () => {
     const activeItems = items.filter(i => i.quantity > 0);
-    if (!selectedBranch || activeItems.length === 0) {
-      toast({ title: 'Error', description: 'Select a branch and add quantities', variant: 'destructive' });
+    if (!selectedAgent || activeItems.length === 0) {
+      toast({ title: 'Error', description: 'Select an agent and add quantities', variant: 'destructive' });
       return;
     }
     const { data: delivery, error } = await supabase.from('deliveries').insert({
-      branch_id: selectedBranch,
+      agent_id: selectedAgent,
       delivery_date: deliveryDate,
       created_by: user!.id,
-    }).select().single();
+    } as any).select().single();
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
 
     const itemsPayload = activeItems.map(i => {
@@ -103,17 +111,22 @@ export default function Deliveries() {
           <DialogTrigger asChild>
             <Button><Plus className="mr-2 h-4 w-4" /> New Delivery</Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="font-serif">Create Delivery</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>Branch</Label>
-                <Select value={selectedBranch} onValueChange={handleBranchSelect}>
-                  <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+                <Label>Agent / Branch</Label>
+                <Select value={selectedAgent} onValueChange={handleAgentSelect}>
+                  <SelectTrigger><SelectValue placeholder="Select agent" /></SelectTrigger>
                   <SelectContent>
-                    {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                    {agents.length === 0 && <SelectItem value="none" disabled>No agents — create one in User Management</SelectItem>}
+                    {agents.map(a => (
+                      <SelectItem key={a.user_id} value={a.user_id}>
+                        {a.branch_name} {a.full_name ? `(${a.full_name})` : ''}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -122,7 +135,7 @@ export default function Deliveries() {
                 <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
               </div>
               {autoFilled && (
-                <p className="text-sm text-accent">Previous day leftovers auto-filled. Adjust as needed.</p>
+                <p className="text-sm text-accent">Previous day leftovers (minus defective) auto-filled. Adjust as needed.</p>
               )}
               {categories.length > 0 && (
                 <div className="space-y-2">
@@ -150,7 +163,7 @@ export default function Deliveries() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Branch</TableHead>
+                <TableHead>Agent / Branch</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -163,7 +176,7 @@ export default function Deliveries() {
               ) : deliveries.map(d => (
                 <TableRow key={d.id}>
                   <TableCell>{d.delivery_date}</TableCell>
-                  <TableCell className="font-medium">{d.branches?.name}</TableCell>
+                  <TableCell className="font-medium">{d.agent?.branch_name ?? '—'}</TableCell>
                   <TableCell>
                     {d.delivery_items?.map((di: any) => (
                       <span key={di.id} className="mr-2 text-sm">{di.categories?.name}: {di.quantity}</span>

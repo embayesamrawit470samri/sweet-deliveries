@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +15,8 @@ interface DeliveryItem {
   price_at_delivery: number;
   sold_shift1: number;
   sold_shift2: number;
+  defective_shift1: number;
+  defective_shift2: number;
   categories: { name: string } | null;
 }
 
@@ -20,49 +24,79 @@ interface Delivery {
   id: string;
   delivery_date: string;
   status: string;
-  branches: { name: string; shift1_name: string; shift2_name: string | null } | null;
+  agent_id: string;
   delivery_items: DeliveryItem[];
 }
 
+interface AgentProfile {
+  branch_name: string | null;
+  shift1_name: string | null;
+  shift2_name: string | null;
+}
+
 export default function AgentDeliveries() {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingShift, setEditingShift] = useState<{ itemId: string; shift: 1 | 2; value: number } | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { sold1: number; sold2: number; def1: number; def2: number }>>({});
 
   const load = async () => {
+    if (!user) return;
     const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase
-      .from('deliveries')
-      .select('*, branches(name, shift1_name, shift2_name), delivery_items(*, categories(name))')
-      .eq('delivery_date', today)
-      .order('created_at', { ascending: false });
-    setDeliveries((data as any) ?? []);
+    const [pRes, dRes] = await Promise.all([
+      supabase.from('profiles').select('branch_name, shift1_name, shift2_name').eq('user_id', user.id).maybeSingle(),
+      supabase
+        .from('deliveries')
+        .select('*, delivery_items(*, categories(name))')
+        .eq('delivery_date', today)
+        .eq('agent_id', user.id)
+        .order('created_at', { ascending: false }),
+    ]);
+    setProfile((pRes.data as any) ?? null);
+    const list: Delivery[] = (dRes.data as any) ?? [];
+    setDeliveries(list);
+    const initial: Record<string, any> = {};
+    list.forEach(d => d.delivery_items.forEach(it => {
+      initial[it.id] = {
+        sold1: it.sold_shift1, sold2: it.sold_shift2,
+        def1: it.defective_shift1, def2: it.defective_shift2,
+      };
+    }));
+    setDrafts(initial);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user?.id]);
 
-  const handleSoldUpdate = async (item: DeliveryItem, shift: 1 | 2, newSold: number) => {
-    if (shift === 1) {
-      if (newSold > item.quantity) {
-        toast({ title: 'Error', description: 'Sold cannot exceed delivered quantity', variant: 'destructive' });
-        return;
-      }
-      const { error } = await supabase.from('delivery_items').update({ sold_shift1: newSold }).eq('id', item.id);
-      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-    } else {
-      const remaining = item.quantity - item.sold_shift1;
-      if (newSold > remaining) {
-        toast({ title: 'Error', description: 'Sold cannot exceed remaining quantity', variant: 'destructive' });
-        return;
-      }
-      const { error } = await supabase.from('delivery_items').update({ sold_shift2: newSold }).eq('id', item.id);
-      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+  const updateDraft = (itemId: string, key: 'sold1' | 'sold2' | 'def1' | 'def2', value: number) => {
+    setDrafts(d => ({ ...d, [itemId]: { ...d[itemId], [key]: Math.max(0, value) } }));
+  };
+
+  const saveItem = async (item: DeliveryItem) => {
+    const draft = drafts[item.id];
+    if (!draft) return;
+    const s1Total = draft.sold1 + draft.def1;
+    if (s1Total > item.quantity) {
+      toast({ title: 'Shift 1: sold + defective cannot exceed delivered', variant: 'destructive' });
+      return;
     }
+    const remainingForS2 = item.quantity - s1Total;
+    const s2Total = draft.sold2 + draft.def2;
+    if (s2Total > remainingForS2) {
+      toast({ title: 'Shift 2: sold + defective cannot exceed remaining', variant: 'destructive' });
+      return;
+    }
+    const { error } = await supabase.from('delivery_items').update({
+      sold_shift1: draft.sold1,
+      sold_shift2: draft.sold2,
+      defective_shift1: draft.def1,
+      defective_shift2: draft.def2,
+    } as any).eq('id', item.id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Saved' });
     load();
-    toast({ title: 'Updated!' });
-    setEditingShift(null);
   };
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading...</div>;
@@ -76,60 +110,64 @@ export default function AgentDeliveries() {
         <Card key={d.id}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-lg">
-              <span>{d.branches?.name}</span>
+              <span>{profile?.branch_name ?? 'My Branch'}</span>
               <Badge className="bg-secondary text-secondary-foreground">{d.status}</Badge>
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Shift 1: {d.branches?.shift1_name} | Shift 2: {d.branches?.shift2_name ?? 'N/A'}
+              Shift 1: {profile?.shift1_name ?? 'N/A'} | Shift 2: {profile?.shift2_name ?? 'N/A'}
             </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {d.delivery_items.map(item => {
-                const leftoverAfterS1 = item.quantity - item.sold_shift1;
-                const leftoverFinal = leftoverAfterS1 - item.sold_shift2;
+                const draft = drafts[item.id] ?? { sold1: 0, sold2: 0, def1: 0, def2: 0 };
+                const leftover = Math.max(item.quantity - draft.sold1 - draft.sold2 - draft.def1 - draft.def2, 0);
+                const income = (draft.sold1 + draft.sold2) * Number(item.price_at_delivery);
                 return (
                   <div key={item.id} className="rounded-lg border p-3">
-                    <div className="mb-2 flex items-center justify-between">
+                    <div className="mb-3 flex items-center justify-between">
                       <span className="font-medium">{item.categories?.name}</span>
                       <span className="text-sm text-muted-foreground">Delivered: {item.quantity} | {Number(item.price_at_delivery).toFixed(2)} ETB each</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Shift 1 Sold:</span>
-                        {editingShift?.itemId === item.id && editingShift.shift === 1 ? (
-                          <div className="mt-1 flex gap-2">
-                            <Input type="number" min="0" max={item.quantity} className="h-8 w-20" value={editingShift.value}
-                              onChange={e => setEditingShift({ ...editingShift, value: parseInt(e.target.value) || 0 })} />
-                            <Button size="sm" variant="secondary" onClick={() => handleSoldUpdate(item, 1, editingShift.value)}>Save</Button>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded bg-muted/30 p-2">
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Shift 1</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Sold</Label>
+                            <Input type="number" min="0" className="h-8" value={draft.sold1}
+                              onChange={e => updateDraft(item.id, 'sold1', parseInt(e.target.value) || 0)} />
                           </div>
-                        ) : (
-                          <span className="ml-2 cursor-pointer font-medium underline-offset-4 hover:underline"
-                            onClick={() => setEditingShift({ itemId: item.id, shift: 1, value: item.sold_shift1 })}>
-                            {item.sold_shift1}
-                          </span>
-                        )}
+                          <div>
+                            <Label className="text-xs">Defective</Label>
+                            <Input type="number" min="0" className="h-8" value={draft.def1}
+                              onChange={e => updateDraft(item.id, 'def1', parseInt(e.target.value) || 0)} />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground">Shift 2 Sold:</span>
-                        {editingShift?.itemId === item.id && editingShift.shift === 2 ? (
-                          <div className="mt-1 flex gap-2">
-                            <Input type="number" min="0" max={leftoverAfterS1} className="h-8 w-20" value={editingShift.value}
-                              onChange={e => setEditingShift({ ...editingShift, value: parseInt(e.target.value) || 0 })} />
-                            <Button size="sm" variant="secondary" onClick={() => handleSoldUpdate(item, 2, editingShift.value)}>Save</Button>
+                      <div className="rounded bg-muted/30 p-2">
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Shift 2</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Sold</Label>
+                            <Input type="number" min="0" className="h-8" value={draft.sold2}
+                              onChange={e => updateDraft(item.id, 'sold2', parseInt(e.target.value) || 0)} />
                           </div>
-                        ) : (
-                          <span className="ml-2 cursor-pointer font-medium underline-offset-4 hover:underline"
-                            onClick={() => setEditingShift({ itemId: item.id, shift: 2, value: item.sold_shift2 })}>
-                            {item.sold_shift2}
-                          </span>
-                        )}
+                          <div>
+                            <Label className="text-xs">Defective</Label>
+                            <Input type="number" min="0" className="h-8" value={draft.def2}
+                              onChange={e => updateDraft(item.id, 'def2', parseInt(e.target.value) || 0)} />
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-2 flex gap-4 text-sm">
-                      <span>After Shift 1: <strong>{leftoverAfterS1}</strong></span>
-                      <span>Final Leftover: <strong>{leftoverFinal}</strong></span>
-                      <span className="text-primary">Income: <strong>{((item.sold_shift1 + item.sold_shift2) * Number(item.price_at_delivery)).toFixed(2)} ETB</strong></span>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <div className="flex flex-wrap gap-3">
+                        <span>Leftover: <strong>{leftover}</strong></span>
+                        <span className="text-destructive">Defective: <strong>{draft.def1 + draft.def2}</strong></span>
+                        <span className="text-primary">Income: <strong>{income.toFixed(2)} ETB</strong></span>
+                      </div>
+                      <Button size="sm" onClick={() => saveItem(item)}>Save</Button>
                     </div>
                   </div>
                 );
