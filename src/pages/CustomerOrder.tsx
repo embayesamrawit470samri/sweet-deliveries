@@ -8,44 +8,60 @@ import { useToast } from '@/hooks/use-toast';
 import { Croissant, Plus, Trash2, CheckCircle, Sparkles, ImageIcon, Coffee, Cookie, Cake } from 'lucide-react';
 import heroImage from '@/assets/bita-hero.jpg';
 
-interface Category { id: string; name: string; price_etb: number; photo_url: string | null; }
 interface Service {
   id: string; name: string; description: string | null;
   photo_url: string | null; price_etb: number | null;
 }
-interface OrderLine { category_id: string; quantity: number; }
+interface OrderLine { service_id: string; quantity: number; }
 
 export default function CustomerOrder() {
   const { toast } = useToast();
-  const [categories, setCategories] = useState<Category[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [form, setForm] = useState({ customer_name: '', phone: '', needed_at: '', note: '' });
-  const [lines, setLines] = useState<OrderLine[]>([{ category_id: '', quantity: 1 }]);
+  const [lines, setLines] = useState<OrderLine[]>([{ service_id: '', quantity: 1 }]);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.from('categories').select('id, name, price_etb, photo_url').order('name').then(({ data }) => setCategories((data as any) ?? []));
     supabase.from('services').select('*').eq('is_active', true).order('display_order').then(({ data }) => setServices((data as any) ?? []));
   }, []);
 
-  const addLine = () => setLines(l => [...l, { category_id: '', quantity: 1 }]);
+  const addLine = () => setLines(l => [...l, { service_id: '', quantity: 1 }]);
   const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
   const updateLine = (i: number, field: string, val: any) =>
     setLines(l => l.map((line, idx) => idx === i ? { ...line, [field]: val } : line));
 
   const calcTotal = () => lines.reduce((sum, l) => {
-    const cat = categories.find(c => c.id === l.category_id);
-    return sum + (cat ? Number(cat.price_etb) * l.quantity : 0);
+    const s = services.find(c => c.id === l.service_id);
+    return sum + (s?.price_etb ? Number(s.price_etb) * l.quantity : 0);
   }, 0);
 
   const scrollToOrder = () => {
     document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Auto-fill order line from a service card click
+  const quickAdd = (serviceId: string) => {
+    setLines(prev => {
+      // If service already in lines, just bump quantity
+      const idx = prev.findIndex(l => l.service_id === serviceId);
+      if (idx >= 0) {
+        return prev.map((l, i) => i === idx ? { ...l, quantity: l.quantity + 1 } : l);
+      }
+      // Find first empty line, otherwise append
+      const emptyIdx = prev.findIndex(l => !l.service_id);
+      if (emptyIdx >= 0) {
+        return prev.map((l, i) => i === emptyIdx ? { service_id: serviceId, quantity: 1 } : l);
+      }
+      return [...prev, { service_id: serviceId, quantity: 1 }];
+    });
+    scrollToOrder();
+    toast({ title: 'Added to order' });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validLines = lines.filter(l => l.category_id && l.quantity > 0);
+    const validLines = lines.filter(l => l.service_id && l.quantity > 0);
     if (!form.customer_name || validLines.length === 0) {
       toast({ title: 'Error', description: 'Fill your name and select items', variant: 'destructive' });
       return;
@@ -61,10 +77,16 @@ export default function CustomerOrder() {
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); setSubmitting(false); return; }
 
     const itemsPayload = validLines.map(l => {
-      const cat = categories.find(c => c.id === l.category_id);
-      return { order_id: order.id, category_id: l.category_id, quantity: l.quantity, price_at_order: cat?.price_etb ?? 0 };
+      const s = services.find(c => c.id === l.service_id);
+      return {
+        order_id: order.id,
+        service_id: l.service_id,
+        item_name: s?.name ?? null,
+        quantity: l.quantity,
+        price_at_order: s?.price_etb ?? 0,
+      };
     });
-    await supabase.from('order_items').insert(itemsPayload);
+    await supabase.from('order_items').insert(itemsPayload as any);
     setSubmitted(true);
     setSubmitting(false);
   };
@@ -77,7 +99,7 @@ export default function CustomerOrder() {
             <CheckCircle className="mx-auto mb-4 h-16 w-16 text-success" />
             <h2 className="mb-2 font-serif text-2xl">Order Placed!</h2>
             <p className="text-muted-foreground">Thank you, {form.customer_name}. We'll have it ready for you.</p>
-            <Button className="mt-6" onClick={() => { setSubmitted(false); setForm({ customer_name: '', phone: '', needed_at: '', note: '' }); setLines([{ category_id: '', quantity: 1 }]); }}>
+            <Button className="mt-6" onClick={() => { setSubmitted(false); setForm({ customer_name: '', phone: '', needed_at: '', note: '' }); setLines([{ service_id: '', quantity: 1 }]); }}>
               Place Another Order
             </Button>
           </CardContent>
@@ -133,7 +155,7 @@ export default function CustomerOrder() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-12 px-4 py-12">
-        {/* Featured Services */}
+        {/* Featured Services — click to auto-add */}
         {services.length > 0 && (
           <section id="featured" className="animate-fade-in">
             <div className="mb-6 flex items-end justify-between">
@@ -141,12 +163,16 @@ export default function CustomerOrder() {
                 <h2 className="flex items-center gap-2 font-serif text-3xl">
                   <Sparkles className="h-6 w-6 text-accent" /> Featured Today
                 </h2>
-                <p className="mt-1 text-sm text-muted-foreground">Hand-picked treats from our oven to your table.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Tap any item to add it straight to your order.</p>
               </div>
             </div>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {services.map(s => (
-                <Card key={s.id} className="group overflow-hidden border-border/60 transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/10">
+                <Card
+                  key={s.id}
+                  onClick={() => quickAdd(s.id)}
+                  className="group cursor-pointer overflow-hidden border-border/60 transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/10"
+                >
                   <div className="aspect-video w-full overflow-hidden bg-muted">
                     {s.photo_url ? (
                       <img src={s.photo_url} alt={s.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
@@ -159,7 +185,9 @@ export default function CustomerOrder() {
                     {s.description && <p className="text-sm text-muted-foreground line-clamp-3">{s.description}</p>}
                     <div className="flex items-center justify-between pt-3">
                       {s.price_etb !== null && <span className="font-bold text-primary">{Number(s.price_etb).toFixed(2)} ETB</span>}
-                      <Button size="sm" onClick={scrollToOrder}>Quick Order</Button>
+                      <Button size="sm" onClick={(e) => { e.stopPropagation(); quickAdd(s.id); }}>
+                        <Plus className="mr-1 h-3 w-3" /> Add
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -183,12 +211,13 @@ export default function CustomerOrder() {
               <div><Label>When Do You Need It?</Label><Input value={form.needed_at} onChange={e => setForm(f => ({ ...f, needed_at: e.target.value }))} placeholder="e.g. Friday 2 PM, or 15/04/2026 10:00 AM" /></div>
               <div className="space-y-2">
                 <Label>Items</Label>
+                {services.length === 0 && <p className="text-xs text-muted-foreground">No items available yet.</p>}
                 {lines.map((line, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <select className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={line.category_id}
-                      onChange={e => updateLine(i, 'category_id', e.target.value)}>
+                    <select className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={line.service_id}
+                      onChange={e => updateLine(i, 'service_id', e.target.value)}>
                       <option value="">Select item</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name} — {Number(c.price_etb).toFixed(2)} ETB</option>)}
+                      {services.map(s => <option key={s.id} value={s.id}>{s.name}{s.price_etb !== null ? ` — ${Number(s.price_etb).toFixed(2)} ETB` : ''}</option>)}
                     </select>
                     <Input type="number" min="1" className="w-20" value={line.quantity} onChange={e => updateLine(i, 'quantity', parseInt(e.target.value) || 1)} />
                     {lines.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(i)}><Trash2 className="h-4 w-4" /></Button>}
