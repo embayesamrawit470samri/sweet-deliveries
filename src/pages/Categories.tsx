@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Pencil, Trash2, ImageIcon } from 'lucide-react';
@@ -60,18 +60,39 @@ export default function Categories() {
   };
 
   const handleSave = async () => {
+    if (!form.name.trim()) { toast({ title: 'Name required', variant: 'destructive' }); return; }
+    const price = parseFloat(form.price_etb);
+    if (isNaN(price) || price < 0) { toast({ title: 'Invalid price', description: 'Enter a valid price (>= 0)', variant: 'destructive' }); return; }
+
+    // Verify auth before mutating to give a clearer error than RLS
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast({ title: 'Not signed in', description: 'Please sign in again as admin or manager.', variant: 'destructive' });
+      return;
+    }
+
     const payload = {
-      name: form.name,
-      price_etb: parseFloat(form.price_etb),
+      name: form.name.trim(),
+      price_etb: price,
       description: form.description || null,
       photo_url: form.photo_url || null,
     };
     if (editing) {
       const { error } = await supabase.from('categories').update(payload).eq('id', editing.id);
-      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      if (error) {
+        const msg = error.message.includes('row-level security')
+          ? 'You don\'t have permission. Make sure you\'re signed in as admin or manager.'
+          : error.message;
+        toast({ title: 'Update failed', description: msg, variant: 'destructive' }); return;
+      }
     } else {
       const { error } = await supabase.from('categories').insert(payload);
-      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+      if (error) {
+        const msg = error.message.includes('row-level security')
+          ? 'You don\'t have permission. Make sure you\'re signed in as admin or manager.'
+          : error.message;
+        toast({ title: 'Create failed', description: msg, variant: 'destructive' }); return;
+      }
     }
     setDialogOpen(false);
     load();
@@ -96,6 +117,7 @@ export default function Categories() {
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-serif">{editing ? 'Edit Category' : 'New Category'}</DialogTitle>
+              <DialogDescription>Set the name, price, and an optional photo for this bakery item.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div><Label>Name</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>

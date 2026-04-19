@@ -109,3 +109,40 @@
     font-family: 'DM Serif Display', serif;
   }
 }
+
+@layer utilities {
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
+  .animate-steam {
+    animation: steam 3s ease-in-out infinite;
+  }
+  .animate-shimmer {
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+  }
+  .animate-bounce-slow {
+    animation: bounce-slow 2.5s ease-in-out infinite;
+  }
+  .bg-hero-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.92), hsl(var(--accent) / 0.85));
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-12px) rotate(2deg); }
+}
+@keyframes steam {
+  0% { transform: translateY(0) scale(1); opacity: 0.6; }
+  50% { transform: translateY(-20px) scale(1.1); opacity: 0.9; }
+  100% { transform: translateY(-40px) scale(1.2); opacity: 0; }
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
