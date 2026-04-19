@@ -6,9 +6,20 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download } from 'lucide-react';
+import { Download, FileText } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Papa from 'papaparse';
+
+function downloadCsv(filename: string, rows: any[]) {
+  const csv = Papa.unparse(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 type Period = 'daily' | 'weekly' | 'monthly';
 
@@ -40,6 +51,7 @@ export default function Reports() {
   const [orderPeriod, setOrderPeriod] = useState<Period>('daily');
   const [orderRefDate, setOrderRefDate] = useState(new Date().toISOString().split('T')[0]);
   const [orderData, setOrderData] = useState<any[]>([]);
+  const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadDeliveries = async () => {
@@ -78,8 +90,17 @@ export default function Reports() {
     setOrderData((data as any) ?? []);
   };
 
+  const loadPriceHistory = async () => {
+    const { data } = await supabase
+      .from('category_price_history')
+      .select('id, category_id, price_etb, effective_from, categories(name)')
+      .order('effective_from', { ascending: false });
+    setPriceHistory((data as any) ?? []);
+  };
+
   useEffect(() => { loadDeliveries(); }, [dateFrom, dateTo]);
   useEffect(() => { loadOrders(); }, [orderPeriod, orderRefDate]);
+  useEffect(() => { loadPriceHistory(); }, []);
 
   // Aggregations for deliveries
   const deliveryRows = deliveryData.flatMap(d =>
