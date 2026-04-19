@@ -82,8 +82,12 @@ export default function UserManagement() {
     setCreating(true);
     const { data, error } = await supabase.functions.invoke('admin-create-user', { body: form });
     setCreating(false);
-    if (error || (data as any)?.error) {
-      toast({ title: 'Failed to create user', description: error?.message ?? (data as any)?.error, variant: 'destructive' });
+    const errMsg = (data as any)?.error ?? error?.message ?? '';
+    if (errMsg) {
+      const friendly = /already been registered|already exists|email_exists/i.test(errMsg)
+        ? `A user with email "${form.email}" already exists. Please use a different email.`
+        : errMsg;
+      toast({ title: 'Failed to create user', description: friendly, variant: 'destructive' });
       return;
     }
     toast({ title: 'User created', description: `${form.email} added as ${form.role}` });
