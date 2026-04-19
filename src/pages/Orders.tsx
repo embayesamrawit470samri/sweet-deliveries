@@ -8,46 +8,47 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2 } from 'lucide-react';
 
-interface Category { id: string; name: string; price_etb: number; }
-interface OrderLine { category_id: string; quantity: number; }
+interface Service { id: string; name: string; price_etb: number | null; }
+interface OrderLine { service_id: string; quantity: number; }
 
 export default function Orders() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [orders, setOrders] = useState<any[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ customer_name: '', phone: '', needed_at: '' });
-  const [lines, setLines] = useState<OrderLine[]>([{ category_id: '', quantity: 1 }]);
+  const [lines, setLines] = useState<OrderLine[]>([{ service_id: '', quantity: 1 }]);
 
   const load = async () => {
-    const [oRes, cRes] = await Promise.all([
-      supabase.from('orders').select('*, order_items(*, categories(name))').order('created_at', { ascending: false }),
-      supabase.from('categories').select('id, name, price_etb').order('name'),
+    const [oRes, sRes] = await Promise.all([
+      supabase.from('orders').select('*, order_items(*, categories(name), services(name))').order('created_at', { ascending: false }),
+      supabase.from('services').select('id, name, price_etb').eq('is_active', true).order('display_order'),
     ]);
     setOrders(oRes.data ?? []);
-    setCategories(cRes.data ?? []);
+    setServices((sRes.data as any) ?? []);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const addLine = () => setLines(l => [...l, { category_id: '', quantity: 1 }]);
+  const addLine = () => setLines(l => [...l, { service_id: '', quantity: 1 }]);
   const removeLine = (i: number) => setLines(l => l.filter((_, idx) => idx !== i));
   const updateLine = (i: number, field: string, val: any) =>
     setLines(l => l.map((line, idx) => idx === i ? { ...line, [field]: val } : line));
 
   const calcTotal = () => lines.reduce((sum, l) => {
-    const cat = categories.find(c => c.id === l.category_id);
-    return sum + (cat ? Number(cat.price_etb) * l.quantity : 0);
+    const s = services.find(c => c.id === l.service_id);
+    return sum + (s?.price_etb ? Number(s.price_etb) * l.quantity : 0);
   }, 0);
 
   const handleCreate = async () => {
-    const validLines = lines.filter(l => l.category_id && l.quantity > 0);
+    const validLines = lines.filter(l => l.service_id && l.quantity > 0);
     if (!form.customer_name || validLines.length === 0) {
       toast({ title: 'Error', description: 'Fill customer name and add items', variant: 'destructive' });
       return;
@@ -63,15 +64,27 @@ export default function Orders() {
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
 
     const itemsPayload = validLines.map(l => {
-      const cat = categories.find(c => c.id === l.category_id);
-      return { order_id: order.id, category_id: l.category_id, quantity: l.quantity, price_at_order: cat?.price_etb ?? 0 };
+      const s = services.find(c => c.id === l.service_id);
+      return {
+        order_id: order.id,
+        service_id: l.service_id,
+        item_name: s?.name ?? null,
+        quantity: l.quantity,
+        price_at_order: s?.price_etb ?? 0,
+      };
     });
-    await supabase.from('order_items').insert(itemsPayload);
+    await supabase.from('order_items').insert(itemsPayload as any);
     setDialogOpen(false);
     setForm({ customer_name: '', phone: '', needed_at: '' });
-    setLines([{ category_id: '', quantity: 1 }]);
+    setLines([{ service_id: '', quantity: 1 }]);
     load();
     toast({ title: 'Order placed!' });
+  };
+
+  const updateOrderStatus = async (id: string, status: string) => {
+    const { error } = await supabase.from('orders').update({ status } as any).eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    load();
   };
 
   const statusColor = (s: string) => {
@@ -84,6 +97,8 @@ export default function Orders() {
     };
     return map[s] ?? '';
   };
+
+  const itemLabel = (it: any) => it.services?.name ?? it.item_name ?? it.categories?.name ?? '—';
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -100,13 +115,14 @@ export default function Orders() {
               <div><Label>Phone</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
               <div><Label>When Needed</Label><Input value={form.needed_at} onChange={e => setForm(f => ({ ...f, needed_at: e.target.value }))} placeholder="e.g. Friday 2 PM" /></div>
               <div className="space-y-2">
-                <Label>Items</Label>
+                <Label>Items (from Services)</Label>
+                {services.length === 0 && <p className="text-xs text-muted-foreground">No active services. Add some in the Services page.</p>}
                 {lines.map((line, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <select className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={line.category_id}
-                      onChange={e => updateLine(i, 'category_id', e.target.value)}>
+                    <select className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={line.service_id}
+                      onChange={e => updateLine(i, 'service_id', e.target.value)}>
                       <option value="">Select item</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({Number(c.price_etb).toFixed(2)} ETB)</option>)}
+                      {services.map(s => <option key={s.id} value={s.id}>{s.name}{s.price_etb !== null ? ` (${Number(s.price_etb).toFixed(2)} ETB)` : ''}</option>)}
                     </select>
                     <Input type="number" min="1" className="w-20" value={line.quantity} onChange={e => updateLine(i, 'quantity', parseInt(e.target.value) || 1)} />
                     {lines.length > 1 && <Button variant="ghost" size="icon" onClick={() => removeLine(i)}><Trash2 className="h-4 w-4" /></Button>}
@@ -129,22 +145,39 @@ export default function Orders() {
                 <TableHead>Customer</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>When</TableHead>
+                <TableHead>Items</TableHead>
                 <TableHead>Total (ETB)</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Loading...</TableCell></TableRow>
               ) : orders.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No orders yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No orders yet</TableCell></TableRow>
               ) : orders.map(o => (
                 <TableRow key={o.id}>
                   <TableCell className="font-medium">{o.customer_name}</TableCell>
                   <TableCell>{o.phone ?? '-'}</TableCell>
                   <TableCell>{o.needed_at ?? '-'}</TableCell>
+                  <TableCell className="max-w-xs">
+                    {o.order_items?.map((it: any) => (
+                      <span key={it.id} className="mr-2 text-sm">{itemLabel(it)} × {it.quantity}</span>
+                    ))}
+                  </TableCell>
                   <TableCell>{Number(o.total_etb).toFixed(2)}</TableCell>
-                  <TableCell><Badge className={statusColor(o.status)}>{o.status}</Badge></TableCell>
+                  <TableCell>
+                    <Select value={o.status} onValueChange={(v) => updateOrderStatus(o.id, v)}>
+                      <SelectTrigger className="h-8 w-32"><Badge className={statusColor(o.status)}>{o.status}</Badge></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">pending</SelectItem>
+                        <SelectItem value="confirmed">confirmed</SelectItem>
+                        <SelectItem value="ready">ready</SelectItem>
+                        <SelectItem value="delivered">delivered</SelectItem>
+                        <SelectItem value="cancelled">cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
