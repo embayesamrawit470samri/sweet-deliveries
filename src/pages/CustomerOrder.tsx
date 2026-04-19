@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Croissant, Plus, Trash2, CheckCircle, Sparkles, ImageIcon } from 'lucide-react';
+import { Croissant, Plus, Trash2, CheckCircle, Sparkles, ImageIcon, Coffee, Cookie, Cake } from 'lucide-react';
+import heroImage from '@/assets/bita-hero.jpg';
 
 interface Category { id: string; name: string; price_etb: number; photo_url: string | null; }
 interface Service {
@@ -86,37 +87,77 @@ export default function CustomerOrder() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="mx-auto max-w-5xl space-y-8 py-8">
-        {/* Hero */}
-        <div className="animate-fade-in text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary">
-            <Croissant className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <h1 className="font-serif text-3xl md:text-4xl">Fresh from Our Bakery</h1>
-          <p className="mt-2 text-muted-foreground">Place your order — baked with love, delivered fresh.</p>
+    <div className="min-h-screen bg-background">
+      {/* HERO */}
+      <header className="relative overflow-hidden">
+        <div className="absolute inset-0">
+          <img src={heroImage} alt="Bita Bakery — fresh croissants, Ethiopian dabo and coffee" className="h-full w-full object-cover" width={1920} height={1080} />
+          <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-background/30" />
         </div>
 
+        {/* Floating animated icons */}
+        <Croissant className="absolute left-[8%] top-[20%] h-10 w-10 text-accent/70 animate-float" style={{ animationDelay: '0s' }} />
+        <Cookie className="absolute right-[12%] top-[28%] h-9 w-9 text-primary/60 animate-float" style={{ animationDelay: '1.2s' }} />
+        <Cake className="absolute right-[22%] bottom-[18%] h-10 w-10 text-accent/60 animate-float" style={{ animationDelay: '2s' }} />
+        <Coffee className="absolute left-[18%] bottom-[22%] h-9 w-9 text-primary/70 animate-float" style={{ animationDelay: '0.6s' }} />
+
+        {/* Steam puffs */}
+        <span className="absolute left-[45%] top-[45%] h-3 w-3 rounded-full bg-foreground/20 blur-sm animate-steam" />
+        <span className="absolute left-[48%] top-[48%] h-2 w-2 rounded-full bg-foreground/15 blur-sm animate-steam" style={{ animationDelay: '0.8s' }} />
+        <span className="absolute left-[42%] top-[50%] h-2 w-2 rounded-full bg-foreground/10 blur-sm animate-steam" style={{ animationDelay: '1.5s' }} />
+
+        <div className="relative mx-auto max-w-6xl px-6 py-20 md:py-28">
+          <div className="max-w-xl space-y-6 animate-fade-in">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-card/80 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5 animate-bounce-slow" /> Freshly Baked Daily
+            </div>
+            <h1 className="font-serif text-5xl leading-tight md:text-7xl">
+              <span className="block">Bita</span>
+              <span className="block bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent animate-shimmer">
+                Bakery
+              </span>
+            </h1>
+            <p className="text-lg text-muted-foreground md:text-xl">
+              Where every loaf tells a story. Ethiopian warmth, French finesse — baked with love and delivered fresh to your door.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button size="lg" onClick={scrollToOrder} className="shadow-lg shadow-primary/20">
+                <Croissant className="mr-2 h-5 w-5" /> Order Now
+              </Button>
+              <Button size="lg" variant="outline" onClick={() => document.getElementById('featured')?.scrollIntoView({ behavior: 'smooth' })}>
+                See What's Fresh
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl space-y-12 px-4 py-12">
         {/* Featured Services */}
         {services.length > 0 && (
-          <section className="animate-fade-in">
-            <h2 className="mb-3 flex items-center gap-2 font-serif text-xl">
-              <Sparkles className="h-5 w-5 text-primary" /> Featured
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <section id="featured" className="animate-fade-in">
+            <div className="mb-6 flex items-end justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 font-serif text-3xl">
+                  <Sparkles className="h-6 w-6 text-accent" /> Featured Today
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">Hand-picked treats from our oven to your table.</p>
+              </div>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {services.map(s => (
-                <Card key={s.id} className="overflow-hidden transition-shadow hover:shadow-lg">
+                <Card key={s.id} className="group overflow-hidden border-border/60 transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/10">
                   <div className="aspect-video w-full overflow-hidden bg-muted">
                     {s.photo_url ? (
-                      <img src={s.photo_url} alt={s.name} className="h-full w-full object-cover" loading="lazy" />
+                      <img src={s.photo_url} alt={s.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-10 w-10 text-muted-foreground" /></div>
                     )}
                   </div>
-                  <CardContent className="space-y-2 p-4">
-                    <h3 className="font-serif text-lg">{s.name}</h3>
+                  <CardContent className="space-y-2 p-5">
+                    <h3 className="font-serif text-xl">{s.name}</h3>
                     {s.description && <p className="text-sm text-muted-foreground line-clamp-3">{s.description}</p>}
-                    <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center justify-between pt-3">
                       {s.price_etb !== null && <span className="font-bold text-primary">{Number(s.price_etb).toFixed(2)} ETB</span>}
                       <Button size="sm" onClick={scrollToOrder}>Quick Order</Button>
                     </div>
@@ -128,9 +169,9 @@ export default function CustomerOrder() {
         )}
 
         {/* Order form */}
-        <Card id="order-form" className="animate-fade-in">
+        <Card id="order-form" className="animate-fade-in border-primary/20 shadow-xl shadow-primary/5">
           <CardHeader>
-            <CardTitle className="font-serif text-2xl">Place Your Order</CardTitle>
+            <CardTitle className="font-serif text-3xl">Place Your Order</CardTitle>
             <CardDescription>Fresh baked goods, made with love</CardDescription>
           </CardHeader>
           <CardContent>
@@ -162,7 +203,11 @@ export default function CustomerOrder() {
             </form>
           </CardContent>
         </Card>
-      </div>
+      </main>
+
+      <footer className="border-t border-border/50 bg-card/50 py-8 text-center text-sm text-muted-foreground">
+        <p>© Bita Bakery — Baked with love in Ethiopia 🇪🇹</p>
+      </footer>
     </div>
   );
 }

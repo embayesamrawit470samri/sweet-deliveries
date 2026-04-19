@@ -6,9 +6,20 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download } from 'lucide-react';
+import { Download, FileText } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Papa from 'papaparse';
+
+function downloadCsv(filename: string, rows: any[]) {
+  const csv = Papa.unparse(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 type Period = 'daily' | 'weekly' | 'monthly';
 
@@ -40,6 +51,7 @@ export default function Reports() {
   const [orderPeriod, setOrderPeriod] = useState<Period>('daily');
   const [orderRefDate, setOrderRefDate] = useState(new Date().toISOString().split('T')[0]);
   const [orderData, setOrderData] = useState<any[]>([]);
+  const [priceHistory, setPriceHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadDeliveries = async () => {
@@ -78,8 +90,17 @@ export default function Reports() {
     setOrderData((data as any) ?? []);
   };
 
+  const loadPriceHistory = async () => {
+    const { data } = await supabase
+      .from('category_price_history')
+      .select('id, category_id, price_etb, effective_from, categories(name)')
+      .order('effective_from', { ascending: false });
+    setPriceHistory((data as any) ?? []);
+  };
+
   useEffect(() => { loadDeliveries(); }, [dateFrom, dateTo]);
   useEffect(() => { loadOrders(); }, [orderPeriod, orderRefDate]);
+  useEffect(() => { loadPriceHistory(); }, []);
 
   // Aggregations for deliveries
   const deliveryRows = deliveryData.flatMap(d =>
@@ -155,6 +176,51 @@ export default function Reports() {
     doc.save(`orders_${orderPeriod}_${orderRefDate}.pdf`);
   };
 
+  const downloadDeliveryCsv = () => {
+    downloadCsv(`deliveries_${dateFrom}_to_${dateTo}.csv`, deliveryRows.map(r => ({
+      Date: r.date, Branch: r.branch, Item: r.item,
+      Delivered: r.delivered, Sold: r.sold, Defective: r.defective,
+      Leftover: r.leftover, 'Income (ETB)': r.income.toFixed(2),
+    })));
+  };
+
+  const downloadOrdersCsv = () => {
+    downloadCsv(`orders_${orderPeriod}_${orderRefDate}.csv`, orderData.map(o => ({
+      Date: new Date(o.created_at).toLocaleDateString(),
+      Customer: o.customer_name,
+      Phone: o.phone ?? '',
+      Items: (o.order_items ?? []).map((oi: any) => `${oi.categories?.name} x${oi.quantity}`).join('; '),
+      'Total (ETB)': Number(o.total_etb).toFixed(2),
+      Status: o.status,
+    })));
+  };
+
+  const priceHistoryRows = priceHistory.map((p: any) => ({
+    'Effective From': new Date(p.effective_from).toLocaleString(),
+    Category: p.categories?.name ?? '—',
+    'Price (ETB)': Number(p.price_etb).toFixed(2),
+  }));
+
+  const downloadPriceHistoryPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Category Price History', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    autoTable(doc, {
+      startY: 28,
+      head: [['Effective From', 'Category', 'Price (ETB)']],
+      body: priceHistoryRows.map(r => [r['Effective From'], r.Category, r['Price (ETB)']]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [180, 100, 50] },
+    });
+    doc.save('category_price_history.pdf');
+  };
+
+  const downloadPriceHistoryCsv = () =>
+    downloadCsv('category_price_history.csv', priceHistoryRows);
+
+
   return (
     <div className="animate-fade-in space-y-4">
       <h2 className="font-serif text-2xl">Reports</h2>
@@ -163,13 +229,15 @@ export default function Reports() {
         <TabsList>
           <TabsTrigger value="deliveries">Deliveries (income)</TabsTrigger>
           <TabsTrigger value="orders">Orders (daily/weekly/monthly)</TabsTrigger>
+          <TabsTrigger value="prices">Price History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deliveries" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div><Label>From</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
             <div><Label>To</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
-            <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PDF</Button>
+            <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+            <Button onClick={downloadDeliveryCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -228,7 +296,8 @@ export default function Reports() {
               </select>
             </div>
             <div><Label>Reference date</Label><Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} /></div>
-            <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PDF</Button>
+            <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+            <Button onClick={downloadOrdersCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -262,6 +331,40 @@ export default function Reports() {
                       </TableCell>
                       <TableCell>{Number(o.total_etb).toFixed(2)}</TableCell>
                       <TableCell>{o.status}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="prices" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="text-sm text-muted-foreground">All recorded category price changes (most recent first).</div>
+            <div className="ml-auto flex gap-2">
+              <Button onClick={downloadPriceHistoryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+              <Button onClick={downloadPriceHistoryCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
+            </div>
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Effective From</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Price (ETB)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {priceHistoryRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No price history yet</TableCell></TableRow>
+                  ) : priceHistoryRows.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{r['Effective From']}</TableCell>
+                      <TableCell>{r.Category}</TableCell>
+                      <TableCell className="font-medium">{r['Price (ETB)']}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
