@@ -103,6 +103,13 @@ export default function Deliveries() {
 
   const statusColor = (s: string) => s === 'completed' ? 'bg-success text-success-foreground' : s === 'confirmed' ? 'bg-accent text-accent-foreground' : 'bg-secondary text-secondary-foreground';
 
+  const updateStatus = async (id: string, status: string) => {
+    const { error } = await supabase.from('deliveries').update({ status } as any).eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: `Status: ${status}` });
+    load();
+  };
+
   return (
     <div className="animate-fade-in space-y-4">
       <div className="flex items-center justify-between">
@@ -182,7 +189,17 @@ export default function Deliveries() {
                       <span key={di.id} className="mr-2 text-sm">{di.categories?.name}: {di.quantity}</span>
                     ))}
                   </TableCell>
-                  <TableCell><Badge className={statusColor(d.status)}>{d.status}</Badge></TableCell>
+                  <TableCell>
+                    <Select value={d.status} onValueChange={(v) => updateStatus(d.id, v)}>
+                      <SelectTrigger className="h-8 w-36"><Badge className={statusColor(d.status)}>{d.status}</Badge></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">pending</SelectItem>
+                        <SelectItem value="confirmed">confirmed</SelectItem>
+                        <SelectItem value="completed">completed</SelectItem>
+                        <SelectItem value="cancelled">cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

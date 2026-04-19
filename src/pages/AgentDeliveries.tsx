@@ -34,13 +34,16 @@ interface AgentProfile {
   shift2_name: string | null;
 }
 
+// Draft now uses defective + leftover (sold = qty - def - leftover)
+type Draft = { def1: number; left1: number; def2: number; left2: number };
+
 export default function AgentDeliveries() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
-  const [drafts, setDrafts] = useState<Record<string, { sold1: number; sold2: number; def1: number; def2: number }>>({});
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
 
   const load = async () => {
     if (!user) return;
@@ -57,11 +60,17 @@ export default function AgentDeliveries() {
     setProfile((pRes.data as any) ?? null);
     const list: Delivery[] = (dRes.data as any) ?? [];
     setDeliveries(list);
-    const initial: Record<string, any> = {};
+    const initial: Record<string, Draft> = {};
     list.forEach(d => d.delivery_items.forEach(it => {
+      // Reconstruct leftover from sold + defective; leftover_total = qty - sold - def
+      const leftoverTotal = Math.max(it.quantity - it.sold_shift1 - it.sold_shift2 - it.defective_shift1 - it.defective_shift2, 0);
+      // Split leftover: any remainder after shift 1 belongs to whichever shift had data; default left2 holds leftover.
+      const remainingAfterS1 = Math.max(it.quantity - it.sold_shift1 - it.defective_shift1, 0);
+      const left1 = it.sold_shift2 + it.defective_shift2 > 0 ? 0 : leftoverTotal === remainingAfterS1 ? leftoverTotal : 0;
+      const left2 = leftoverTotal - left1;
       initial[it.id] = {
-        sold1: it.sold_shift1, sold2: it.sold_shift2,
-        def1: it.defective_shift1, def2: it.defective_shift2,
+        def1: it.defective_shift1, left1,
+        def2: it.defective_shift2, left2,
       };
     }));
     setDrafts(initial);
@@ -70,27 +79,34 @@ export default function AgentDeliveries() {
 
   useEffect(() => { load(); }, [user?.id]);
 
-  const updateDraft = (itemId: string, key: 'sold1' | 'sold2' | 'def1' | 'def2', value: number) => {
+  const updateDraft = (itemId: string, key: keyof Draft, value: number) => {
     setDrafts(d => ({ ...d, [itemId]: { ...d[itemId], [key]: Math.max(0, value) } }));
+  };
+
+  const computeSold = (item: DeliveryItem, draft: Draft) => {
+    const sold1 = Math.max(item.quantity - draft.def1 - draft.left1, 0);
+    // For shift 2, baseline is whatever is left after shift 1
+    const remaining = Math.max(item.quantity - sold1 - draft.def1 - draft.left1, 0);
+    const sold2 = Math.max(remaining - draft.def2 - draft.left2, 0);
+    return { sold1, sold2 };
   };
 
   const saveItem = async (item: DeliveryItem) => {
     const draft = drafts[item.id];
     if (!draft) return;
-    const s1Total = draft.sold1 + draft.def1;
-    if (s1Total > item.quantity) {
-      toast({ title: 'Shift 1: sold + defective cannot exceed delivered', variant: 'destructive' });
+    if (draft.def1 + draft.left1 > item.quantity) {
+      toast({ title: 'Shift 1: defective + leftover cannot exceed delivered', variant: 'destructive' });
       return;
     }
-    const remainingForS2 = item.quantity - s1Total;
-    const s2Total = draft.sold2 + draft.def2;
-    if (s2Total > remainingForS2) {
-      toast({ title: 'Shift 2: sold + defective cannot exceed remaining', variant: 'destructive' });
+    const { sold1, sold2 } = computeSold(item, draft);
+    const remainingForS2 = item.quantity - sold1 - draft.def1 - draft.left1;
+    if (draft.def2 + draft.left2 > remainingForS2) {
+      toast({ title: 'Shift 2: defective + leftover cannot exceed remaining', variant: 'destructive' });
       return;
     }
     const { error } = await supabase.from('delivery_items').update({
-      sold_shift1: draft.sold1,
-      sold_shift2: draft.sold2,
+      sold_shift1: sold1,
+      sold_shift2: sold2,
       defective_shift1: draft.def1,
       defective_shift2: draft.def2,
     } as any).eq('id', item.id);
@@ -104,6 +120,9 @@ export default function AgentDeliveries() {
   return (
     <div className="animate-fade-in space-y-4">
       <h2 className="font-serif text-2xl">Today's Deliveries</h2>
+      <p className="text-sm text-muted-foreground">
+        Just enter <strong>Defective</strong> and <strong>Leftover</strong> for each shift — sold is calculated automatically.
+      </p>
       {deliveries.length === 0 ? (
         <Card><CardContent className="p-6 text-center text-muted-foreground">No deliveries assigned for today</CardContent></Card>
       ) : deliveries.map(d => (
@@ -120,9 +139,12 @@ export default function AgentDeliveries() {
           <CardContent>
             <div className="space-y-3">
               {d.delivery_items.map(item => {
-                const draft = drafts[item.id] ?? { sold1: 0, sold2: 0, def1: 0, def2: 0 };
-                const leftover = Math.max(item.quantity - draft.sold1 - draft.sold2 - draft.def1 - draft.def2, 0);
-                const income = (draft.sold1 + draft.sold2) * Number(item.price_at_delivery);
+                const draft = drafts[item.id] ?? { def1: 0, left1: 0, def2: 0, left2: 0 };
+                const { sold1, sold2 } = computeSold(item, draft);
+                const totalDef = draft.def1 + draft.def2;
+                const totalLeft = draft.left1 + draft.left2;
+                const totalSold = sold1 + sold2;
+                const income = totalSold * Number(item.price_at_delivery);
                 return (
                   <div key={item.id} className="rounded-lg border p-3">
                     <div className="mb-3 flex items-center justify-between">
@@ -131,40 +153,41 @@ export default function AgentDeliveries() {
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="rounded bg-muted/30 p-2">
-                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Shift 1</p>
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Shift 1 — Sold: <span className="text-foreground">{sold1}</span></p>
                         <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-xs">Sold</Label>
-                            <Input type="number" min="0" className="h-8" value={draft.sold1}
-                              onChange={e => updateDraft(item.id, 'sold1', parseInt(e.target.value) || 0)} />
-                          </div>
                           <div>
                             <Label className="text-xs">Defective</Label>
                             <Input type="number" min="0" className="h-8" value={draft.def1}
                               onChange={e => updateDraft(item.id, 'def1', parseInt(e.target.value) || 0)} />
                           </div>
+                          <div>
+                            <Label className="text-xs">Leftover</Label>
+                            <Input type="number" min="0" className="h-8" value={draft.left1}
+                              onChange={e => updateDraft(item.id, 'left1', parseInt(e.target.value) || 0)} />
+                          </div>
                         </div>
                       </div>
                       <div className="rounded bg-muted/30 p-2">
-                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Shift 2</p>
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Shift 2 — Sold: <span className="text-foreground">{sold2}</span></p>
                         <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-xs">Sold</Label>
-                            <Input type="number" min="0" className="h-8" value={draft.sold2}
-                              onChange={e => updateDraft(item.id, 'sold2', parseInt(e.target.value) || 0)} />
-                          </div>
                           <div>
                             <Label className="text-xs">Defective</Label>
                             <Input type="number" min="0" className="h-8" value={draft.def2}
                               onChange={e => updateDraft(item.id, 'def2', parseInt(e.target.value) || 0)} />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Leftover</Label>
+                            <Input type="number" min="0" className="h-8" value={draft.left2}
+                              onChange={e => updateDraft(item.id, 'left2', parseInt(e.target.value) || 0)} />
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
                       <div className="flex flex-wrap gap-3">
-                        <span>Leftover: <strong>{leftover}</strong></span>
-                        <span className="text-destructive">Defective: <strong>{draft.def1 + draft.def2}</strong></span>
+                        <span>Sold: <strong>{totalSold}</strong></span>
+                        <span>Leftover: <strong>{totalLeft}</strong></span>
+                        <span className="text-destructive">Defective: <strong>{totalDef}</strong></span>
                         <span className="text-primary">Income: <strong>{income.toFixed(2)} ETB</strong></span>
                       </div>
                       <Button size="sm" onClick={() => saveItem(item)}>Save</Button>
