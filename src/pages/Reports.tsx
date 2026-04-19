@@ -229,13 +229,15 @@ export default function Reports() {
         <TabsList>
           <TabsTrigger value="deliveries">Deliveries (income)</TabsTrigger>
           <TabsTrigger value="orders">Orders (daily/weekly/monthly)</TabsTrigger>
+          <TabsTrigger value="prices">Price History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deliveries" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div><Label>From</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
             <div><Label>To</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
-            <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PDF</Button>
+            <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+            <Button onClick={downloadDeliveryCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -294,7 +296,8 @@ export default function Reports() {
               </select>
             </div>
             <div><Label>Reference date</Label><Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} /></div>
-            <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PDF</Button>
+            <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+            <Button onClick={downloadOrdersCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -328,6 +331,40 @@ export default function Reports() {
                       </TableCell>
                       <TableCell>{Number(o.total_etb).toFixed(2)}</TableCell>
                       <TableCell>{o.status}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="prices" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="text-sm text-muted-foreground">All recorded category price changes (most recent first).</div>
+            <div className="ml-auto flex gap-2">
+              <Button onClick={downloadPriceHistoryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+              <Button onClick={downloadPriceHistoryCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
+            </div>
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Effective From</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Price (ETB)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {priceHistoryRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No price history yet</TableCell></TableRow>
+                  ) : priceHistoryRows.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{r['Effective From']}</TableCell>
+                      <TableCell>{r.Category}</TableCell>
+                      <TableCell className="font-medium">{r['Price (ETB)']}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
