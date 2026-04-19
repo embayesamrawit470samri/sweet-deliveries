@@ -176,6 +176,51 @@ export default function Reports() {
     doc.save(`orders_${orderPeriod}_${orderRefDate}.pdf`);
   };
 
+  const downloadDeliveryCsv = () => {
+    downloadCsv(`deliveries_${dateFrom}_to_${dateTo}.csv`, deliveryRows.map(r => ({
+      Date: r.date, Branch: r.branch, Item: r.item,
+      Delivered: r.delivered, Sold: r.sold, Defective: r.defective,
+      Leftover: r.leftover, 'Income (ETB)': r.income.toFixed(2),
+    })));
+  };
+
+  const downloadOrdersCsv = () => {
+    downloadCsv(`orders_${orderPeriod}_${orderRefDate}.csv`, orderData.map(o => ({
+      Date: new Date(o.created_at).toLocaleDateString(),
+      Customer: o.customer_name,
+      Phone: o.phone ?? '',
+      Items: (o.order_items ?? []).map((oi: any) => `${oi.categories?.name} x${oi.quantity}`).join('; '),
+      'Total (ETB)': Number(o.total_etb).toFixed(2),
+      Status: o.status,
+    })));
+  };
+
+  const priceHistoryRows = priceHistory.map((p: any) => ({
+    'Effective From': new Date(p.effective_from).toLocaleString(),
+    Category: p.categories?.name ?? '—',
+    'Price (ETB)': Number(p.price_etb).toFixed(2),
+  }));
+
+  const downloadPriceHistoryPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Category Price History', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    autoTable(doc, {
+      startY: 28,
+      head: [['Effective From', 'Category', 'Price (ETB)']],
+      body: priceHistoryRows.map(r => [r['Effective From'], r.Category, r['Price (ETB)']]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [180, 100, 50] },
+    });
+    doc.save('category_price_history.pdf');
+  };
+
+  const downloadPriceHistoryCsv = () =>
+    downloadCsv('category_price_history.csv', priceHistoryRows);
+
+
   return (
     <div className="animate-fade-in space-y-4">
       <h2 className="font-serif text-2xl">Reports</h2>
