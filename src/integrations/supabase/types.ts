@@ -193,6 +193,7 @@ export type Database = {
       company_settings: {
         Row: {
           address: string | null
+          bank_accounts: Json
           company_name: string
           footer_note: string | null
           id: string
@@ -203,6 +204,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          bank_accounts?: Json
           company_name?: string
           footer_note?: string | null
           id?: string
@@ -213,6 +215,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          bank_accounts?: Json
           company_name?: string
           footer_note?: string | null
           id?: string
