@@ -47,6 +47,90 @@ export type Database = {
         }
         Relationships: []
       }
+      cashier_sale_items: {
+        Row: {
+          category_id: string
+          id: string
+          line_total: number
+          quantity: number
+          sale_id: string
+          unit_price: number
+        }
+        Insert: {
+          category_id: string
+          id?: string
+          line_total: number
+          quantity: number
+          sale_id: string
+          unit_price: number
+        }
+        Update: {
+          category_id?: string
+          id?: string
+          line_total?: number
+          quantity?: number
+          sale_id?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashier_sale_items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashier_sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "cashier_sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashier_sales: {
+        Row: {
+          cashier_id: string
+          created_at: string
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          paid: boolean
+          sale_date: string
+          service_charge: number
+          shift: string
+          subtotal: number
+          total: number
+        }
+        Insert: {
+          cashier_id: string
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          paid?: boolean
+          sale_date?: string
+          service_charge?: number
+          shift?: string
+          subtotal?: number
+          total?: number
+        }
+        Update: {
+          cashier_id?: string
+          created_at?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          paid?: boolean
+          sale_date?: string
+          service_charge?: number
+          shift?: string
+          subtotal?: number
+          total?: number
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -105,6 +189,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      company_settings: {
+        Row: {
+          address: string | null
+          company_name: string
+          footer_note: string | null
+          id: string
+          phone: string | null
+          service_charge_pct: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          address?: string | null
+          company_name?: string
+          footer_note?: string | null
+          id?: string
+          phone?: string | null
+          service_charge_pct?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          address?: string | null
+          company_name?: string
+          footer_note?: string | null
+          id?: string
+          phone?: string | null
+          service_charge_pct?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       deliveries: {
         Row: {
