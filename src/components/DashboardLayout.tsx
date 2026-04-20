@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import {
   Croissant, LayoutDashboard, Truck, ShoppingCart, BarChart3,
-  Users, Tags, LogOut, Menu, X, ChevronRight, Sparkles
+  Users, Tags, LogOut, Menu, X, ChevronRight, Sparkles, Calculator
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { label: 'Deliveries', href: '/deliveries', icon: <Truck className="h-4 w-4" />, roles: ['admin', 'manager'] },
   { label: 'My Deliveries', href: '/agent/deliveries', icon: <Truck className="h-4 w-4" />, roles: ['agent'] },
   { label: 'Orders', href: '/orders', icon: <ShoppingCart className="h-4 w-4" />, roles: ['admin', 'manager', 'agent'] },
+  { label: 'Cashier', href: '/cashier', icon: <Calculator className="h-4 w-4" />, roles: ['admin', 'manager'] },
   { label: 'Reports', href: '/reports', icon: <BarChart3 className="h-4 w-4" />, roles: ['admin', 'manager'] },
   { label: 'Users', href: '/users', icon: <Users className="h-4 w-4" />, roles: ['admin', 'manager'] },
 ];

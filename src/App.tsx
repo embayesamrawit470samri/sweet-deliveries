@@ -15,6 +15,7 @@ import Orders from "./pages/Orders";
 import Reports from "./pages/Reports";
 import UserManagement from "./pages/UserManagement";
 import CustomerOrder from "./pages/CustomerOrder";
+import Cashier from "./pages/Cashier";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute><UserManagement /></ProtectedRoute>} />
+            <Route path="/cashier" element={<ProtectedRoute><Cashier /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
