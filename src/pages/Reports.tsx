@@ -261,14 +261,23 @@ export default function Reports() {
       <Tabs defaultValue="deliveries">
         <TabsList>
           <TabsTrigger value="deliveries">Deliveries (income)</TabsTrigger>
+          <TabsTrigger value="cashier">Cashier Sales (daily)</TabsTrigger>
           <TabsTrigger value="orders">Orders (daily/weekly/monthly)</TabsTrigger>
           <TabsTrigger value="prices">Price History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deliveries" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
-            <div><Label>From</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
-            <div><Label>To</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
+            <div>
+              <Label>From</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateFrom, lang)}</p>
+            </div>
+            <div>
+              <Label>To</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateTo, lang)}</p>
+            </div>
             <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
             <Button onClick={downloadDeliveryCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
