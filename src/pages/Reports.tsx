@@ -337,7 +337,11 @@ export default function Reports() {
                 <option value="monthly">Monthly</option>
               </select>
             </div>
-            <div><Label>Reference date</Label><Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} /></div>
+            <div>
+              <Label>Reference date</Label>
+              <Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(orderRefDate, lang)}</p>
+            </div>
             <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
             <Button onClick={downloadOrdersCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
