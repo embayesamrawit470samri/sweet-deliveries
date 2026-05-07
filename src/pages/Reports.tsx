@@ -55,6 +55,7 @@ export default function Reports() {
   const [orderRefDate, setOrderRefDate] = useState(new Date().toISOString().split('T')[0]);
   const [orderData, setOrderData] = useState<any[]>([]);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
+  const [cashierSales, setCashierSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadDeliveries = async () => {
@@ -101,9 +102,38 @@ export default function Reports() {
     setPriceHistory((data as any) ?? []);
   };
 
-  useEffect(() => { loadDeliveries(); }, [dateFrom, dateTo]);
+  const loadCashierSales = async () => {
+    const { data } = await supabase
+      .from('cashier_sales' as any)
+      .select('id, sale_date, total, subtotal, service_charge, created_at')
+      .gte('sale_date', dateFrom)
+      .lte('sale_date', dateTo)
+      .order('sale_date', { ascending: true })
+      .order('created_at', { ascending: true });
+    setCashierSales((data as any) ?? []);
+  };
+
+  useEffect(() => { loadDeliveries(); loadCashierSales(); }, [dateFrom, dateTo]);
   useEffect(() => { loadOrders(); }, [orderPeriod, orderRefDate]);
   useEffect(() => { loadPriceHistory(); }, []);
+
+  // Merge cashier sales by sale_date with daily-resetting #001 sequence
+  const cashierDailyRows = (() => {
+    const byDay: Record<string, { date: string; count: number; total: number; subtotal: number; service: number }> = {};
+    cashierSales.forEach((s: any) => {
+      const k = s.sale_date;
+      if (!byDay[k]) byDay[k] = { date: k, count: 0, total: 0, subtotal: 0, service: 0 };
+      byDay[k].count += 1;
+      byDay[k].total += Number(s.total || 0);
+      byDay[k].subtotal += Number(s.subtotal || 0);
+      byDay[k].service += Number(s.service_charge || 0);
+    });
+    return Object.values(byDay)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(r => ({ ...r, saleNo: '001' }));
+  })();
+  const cashierTotal = cashierDailyRows.reduce((s, r) => s + r.total, 0);
+  const cashierTxnCount = cashierDailyRows.reduce((s, r) => s + r.count, 0);
 
   // Aggregations for deliveries
   const deliveryRows = deliveryData.flatMap(d =>
@@ -231,14 +261,23 @@ export default function Reports() {
       <Tabs defaultValue="deliveries">
         <TabsList>
           <TabsTrigger value="deliveries">Deliveries (income)</TabsTrigger>
+          <TabsTrigger value="cashier">Cashier Sales (daily)</TabsTrigger>
           <TabsTrigger value="orders">Orders (daily/weekly/monthly)</TabsTrigger>
           <TabsTrigger value="prices">Price History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deliveries" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
-            <div><Label>From</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
-            <div><Label>To</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
+            <div>
+              <Label>From</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateFrom, lang)}</p>
+            </div>
+            <div>
+              <Label>To</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateTo, lang)}</p>
+            </div>
             <Button onClick={downloadDeliveryPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
             <Button onClick={downloadDeliveryCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
@@ -288,6 +327,70 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="cashier" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label>From</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateFrom, lang)}</p>
+            </div>
+            <div>
+              <Label>To</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateTo, lang)}</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => downloadCsv(`cashier_${dateFrom}_to_${dateTo}.csv`, cashierDailyRows.map(r => ({
+                'Sale #': r.saleNo,
+                'Date (Ethiopian)': formatEthiopian(r.date, lang),
+                'Date (GC)': r.date,
+                'Transactions': r.count,
+                'Subtotal (ETB)': r.subtotal.toFixed(2),
+                'Service (ETB)': r.service.toFixed(2),
+                'Total (ETB)': r.total.toFixed(2),
+              })))}
+            ><FileText className="mr-2 h-4 w-4" /> CSV</Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Days</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{cashierDailyRows.length}</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{cashierTxnCount}</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Income</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-success">{cashierTotal.toFixed(2)} ETB</div></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sale #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Transactions</TableHead>
+                    <TableHead>Subtotal (ETB)</TableHead>
+                    <TableHead>Service (ETB)</TableHead>
+                    <TableHead>Total (ETB)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cashierDailyRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No cashier sales in this range</TableCell></TableRow>
+                  ) : cashierDailyRows.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono">{r.saleNo}</TableCell>
+                      <TableCell>{formatEthiopian(r.date, lang)}</TableCell>
+                      <TableCell>{r.count}</TableCell>
+                      <TableCell>{r.subtotal.toFixed(2)}</TableCell>
+                      <TableCell>{r.service.toFixed(2)}</TableCell>
+                      <TableCell className="font-medium text-success">{r.total.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="orders" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>
@@ -298,7 +401,11 @@ export default function Reports() {
                 <option value="monthly">Monthly</option>
               </select>
             </div>
-            <div><Label>Reference date</Label><Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} /></div>
+            <div>
+              <Label>Reference date</Label>
+              <Input type="date" value={orderRefDate} onChange={e => setOrderRefDate(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(orderRefDate, lang)}</p>
+            </div>
             <Button onClick={downloadOrdersPdf} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
             <Button onClick={downloadOrdersCsv} variant="outline"><FileText className="mr-2 h-4 w-4" /> CSV</Button>
           </div>
