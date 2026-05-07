@@ -10,6 +10,8 @@ import { Download, FileText } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
+import { formatEthiopian } from '@/lib/ethiopianDate';
+import { useI18n } from '@/lib/i18n';
 
 function downloadCsv(filename: string, rows: any[]) {
   const csv = Papa.unparse(rows);
@@ -44,6 +46,7 @@ function endOfPeriod(period: Period, ref: Date): Date {
 }
 
 export default function Reports() {
+  const { lang } = useI18n();
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   const [deliveryData, setDeliveryData] = useState<any[]>([]);
@@ -141,7 +144,7 @@ export default function Reports() {
     autoTable(doc, {
       startY: 34,
       head: [['Date', 'Agent/Branch', 'Item', 'Delivered', 'Sold', 'Defective', 'Leftover', 'Income (ETB)']],
-      body: deliveryRows.map(r => [r.date, r.branch, r.item, r.delivered, r.sold, r.defective, r.leftover, r.income.toFixed(2)]),
+      body: deliveryRows.map(r => [formatEthiopian(r.date, lang), r.branch, r.item, r.delivered, r.sold, r.defective, r.leftover, r.income.toFixed(2)]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [180, 100, 50] },
     });
@@ -163,7 +166,7 @@ export default function Reports() {
       startY: 34,
       head: [['Date', 'Customer', 'Phone', 'Items', 'Total (ETB)', 'Status']],
       body: orderData.map(o => [
-        new Date(o.created_at).toLocaleDateString(),
+        formatEthiopian(o.created_at, lang),
         o.customer_name,
         o.phone ?? '-',
         (o.order_items ?? []).map((oi: any) => `${oi.categories?.name} x${oi.quantity}`).join(', '),
@@ -178,7 +181,7 @@ export default function Reports() {
 
   const downloadDeliveryCsv = () => {
     downloadCsv(`deliveries_${dateFrom}_to_${dateTo}.csv`, deliveryRows.map(r => ({
-      Date: r.date, Branch: r.branch, Item: r.item,
+      Date: formatEthiopian(r.date, lang), Branch: r.branch, Item: r.item,
       Delivered: r.delivered, Sold: r.sold, Defective: r.defective,
       Leftover: r.leftover, 'Income (ETB)': r.income.toFixed(2),
     })));
@@ -186,7 +189,7 @@ export default function Reports() {
 
   const downloadOrdersCsv = () => {
     downloadCsv(`orders_${orderPeriod}_${orderRefDate}.csv`, orderData.map(o => ({
-      Date: new Date(o.created_at).toLocaleDateString(),
+      Date: formatEthiopian(o.created_at, lang),
       Customer: o.customer_name,
       Phone: o.phone ?? '',
       Items: (o.order_items ?? []).map((oi: any) => `${oi.categories?.name} x${oi.quantity}`).join('; '),
@@ -269,7 +272,7 @@ export default function Reports() {
                     <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No deliveries in this range</TableCell></TableRow>
                   ) : deliveryRows.map((r, i) => (
                     <TableRow key={i}>
-                      <TableCell>{r.date}</TableCell>
+                      <TableCell>{formatEthiopian(r.date, lang)}</TableCell>
                       <TableCell>{r.branch}</TableCell>
                       <TableCell>{r.item}</TableCell>
                       <TableCell>{r.delivered}</TableCell>
@@ -323,7 +326,7 @@ export default function Reports() {
                     <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No orders in this period</TableCell></TableRow>
                   ) : orderData.map(o => (
                     <TableRow key={o.id}>
-                      <TableCell>{new Date(o.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>{formatEthiopian(o.created_at, lang)}</TableCell>
                       <TableCell>{o.customer_name}</TableCell>
                       <TableCell>{o.phone ?? '-'}</TableCell>
                       <TableCell>

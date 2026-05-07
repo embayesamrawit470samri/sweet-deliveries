@@ -2,9 +2,11 @@ import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useI18n } from '@/lib/i18n';
 import {
   Croissant, LayoutDashboard, Truck, ShoppingCart, BarChart3,
-  Users, Tags, LogOut, Menu, X, ChevronRight, Sparkles, Calculator
+  Users, Tags, LogOut, Menu, X, ChevronRight, Sparkles, Calculator, Languages
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +31,7 @@ const navItems: NavItem[] = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, roles, signOut } = useAuth();
+  const { lang, setLang, t } = useI18n();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -63,15 +66,26 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               )}
             >
               {item.icon}
-              {item.label}
+              {t(item.label)}
               {location.pathname === item.href && <ChevronRight className="ml-auto h-4 w-4" />}
             </Link>
           ))}
         </nav>
-        <div className="border-t border-sidebar-border p-3">
-          <div className="mb-2 truncate px-3 text-xs text-muted-foreground">{user?.email}</div>
+        <div className="border-t border-sidebar-border p-3 space-y-2">
+          <div className="truncate px-3 text-xs text-muted-foreground">{user?.email}</div>
+          <div className="flex items-center gap-2 px-1">
+            <Languages className="h-4 w-4 text-sidebar-foreground" />
+            <Select value={lang} onValueChange={(v: any) => setLang(v)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="am">አማርኛ</SelectItem>
+                <SelectItem value="ti">ትግርኛ</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={signOut}>
-            <LogOut className="h-4 w-4" /> Sign Out
+            <LogOut className="h-4 w-4" /> {t('Sign Out')}
           </Button>
         </div>
       </aside>
@@ -82,7 +96,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <h1 className="font-serif text-lg">
-            {visibleItems.find(i => i.href === location.pathname)?.label ?? 'Dashboard'}
+            {t(visibleItems.find(i => i.href === location.pathname)?.label ?? 'Dashboard')}
           </h1>
         </header>
         <main className="flex-1 p-4 md:p-6">{children}</main>

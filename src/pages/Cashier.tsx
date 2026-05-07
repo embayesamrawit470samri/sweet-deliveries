@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Minus, Trash2, Printer, Settings as SettingsIcon, Receipt, Banknote, CreditCard, Wallet } from 'lucide-react';
+import { formatEthiopian } from '@/lib/ethiopianDate';
+import { useI18n } from '@/lib/i18n';
 
 interface Category { id: string; name: string; price_etb: number; photo_url: string | null; }
-interface CartItem { category_id: string; name: string; unit_price: number; quantity: number; }
+interface CartItem { category_id: string; name: string; unit_price: number; quantity: number; photo_url: string | null; }
 interface BankAccount { bank_name: string; account_number: string; account_holder: string; }
 interface CompanySettings {
   id?: string;
@@ -26,6 +28,7 @@ type PaymentMethod = 'cash' | 'bank' | 'card';
 
 export default function Cashier() {
   const { user } = useAuth();
+  const { lang } = useI18n();
   const { toast } = useToast();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -87,7 +90,7 @@ export default function Cashier() {
     setCart(prev => {
       const idx = prev.findIndex(i => i.category_id === c.id);
       if (idx >= 0) return prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it);
-      return [...prev, { category_id: c.id, name: c.name, unit_price: Number(c.price_etb), quantity: 1 }];
+      return [...prev, { category_id: c.id, name: c.name, unit_price: Number(c.price_etb), quantity: 1, photo_url: c.photo_url }];
     });
   };
   const updateQty = (id: string, delta: number) =>
@@ -262,16 +265,6 @@ export default function Cashier() {
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Customer</Label>
-                <Input value={customerName} onChange={e => setCustomerName(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Phone</Label>
-                <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
                 <Label className="text-xs">Shift</Label>
                 <Select value={shift} onValueChange={(v: any) => setShift(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -298,6 +291,11 @@ export default function Cashier() {
               {cart.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">Cart is empty</p>}
               {cart.map(it => (
                 <div key={it.category_id} className="flex items-center gap-2 rounded border bg-card p-2">
+                  <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
+                    {it.photo_url
+                      ? <img src={it.photo_url} alt={it.name} className="h-full w-full object-cover" loading="lazy" />
+                      : <div className="flex h-full items-center justify-center text-[8px] text-muted-foreground">—</div>}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{it.name}</p>
                     <p className="text-xs text-muted-foreground">{it.unit_price.toFixed(2)} × {it.quantity}</p>
@@ -345,7 +343,7 @@ export default function Cashier() {
               {settings.address && <p className="text-center">{settings.address}</p>}
               {settings.phone && <p className="text-center">Tel: {settings.phone}</p>}
               <div className="my-2 border-t border-dashed" />
-              <p>Date: {lastSale.date.toLocaleString()}</p>
+              <p>Date: {formatEthiopian(lastSale.date, lang, true)}</p>
               <p>Receipt #: {lastSale.saleId.slice(0, 8).toUpperCase()}</p>
               <p>Cashier: {lastSale.cashierName}</p>
               <p>Customer: {lastSale.customer}{lastSale.phone ? ` (${lastSale.phone})` : ''}</p>
