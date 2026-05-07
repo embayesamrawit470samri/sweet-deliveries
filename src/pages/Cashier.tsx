@@ -162,10 +162,7 @@ export default function Cashier() {
   const handlePrint = () => {
     const node = receiptRef.current;
     if (!node) return;
-    const w = window.open('', '_blank', 'width=400,height=600');
-    if (!w) { toast({ title: 'Popup blocked', description: 'Allow popups to print receipts.', variant: 'destructive' }); return; }
-    w.document.write(`
-      <html><head><title>Receipt</title>
+    const html = `<!doctype html><html><head><title>Receipt</title>
       <style>
         @page { size: 80mm auto; margin: 4mm; }
         * { box-sizing: border-box; }
@@ -178,10 +175,22 @@ export default function Cashier() {
         table { width: 100%; border-collapse: collapse; }
         td { padding: 1px 0; vertical-align: top; }
         .bank { border: 1px dashed #000; padding: 4px; margin: 4px 0; }
-      </style></head><body>${node.innerHTML}</body></html>
-    `);
-    w.document.close();
-    setTimeout(() => { w.focus(); w.print(); w.close(); }, 300);
+      </style></head><body>${node.innerHTML}</body></html>`;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
+      finally { setTimeout(() => document.body.removeChild(iframe), 1000); }
+    }, 250);
   };
 
   const saveSettings = async () => {
