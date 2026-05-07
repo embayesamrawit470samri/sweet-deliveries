@@ -144,7 +144,7 @@ export default function Reports() {
     autoTable(doc, {
       startY: 34,
       head: [['Date', 'Agent/Branch', 'Item', 'Delivered', 'Sold', 'Defective', 'Leftover', 'Income (ETB)']],
-      body: deliveryRows.map(r => [r.date, r.branch, r.item, r.delivered, r.sold, r.defective, r.leftover, r.income.toFixed(2)]),
+      body: deliveryRows.map(r => [formatEthiopian(r.date, lang), r.branch, r.item, r.delivered, r.sold, r.defective, r.leftover, r.income.toFixed(2)]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [180, 100, 50] },
     });
@@ -181,7 +181,7 @@ export default function Reports() {
 
   const downloadDeliveryCsv = () => {
     downloadCsv(`deliveries_${dateFrom}_to_${dateTo}.csv`, deliveryRows.map(r => ({
-      Date: r.date, Branch: r.branch, Item: r.item,
+      Date: formatEthiopian(r.date, lang), Branch: r.branch, Item: r.item,
       Delivered: r.delivered, Sold: r.sold, Defective: r.defective,
       Leftover: r.leftover, 'Income (ETB)': r.income.toFixed(2),
     })));
