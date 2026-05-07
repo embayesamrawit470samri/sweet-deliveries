@@ -343,7 +343,7 @@ export default function Cashier() {
               {settings.address && <p className="text-center">{settings.address}</p>}
               {settings.phone && <p className="text-center">Tel: {settings.phone}</p>}
               <div className="my-2 border-t border-dashed" />
-              <p>Date: {lastSale.date.toLocaleString()}</p>
+              <p>Date: {formatEthiopian(lastSale.date, lang, true)}</p>
               <p>Receipt #: {lastSale.saleId.slice(0, 8).toUpperCase()}</p>
               <p>Cashier: {lastSale.cashierName}</p>
               <p>Customer: {lastSale.customer}{lastSale.phone ? ` (${lastSale.phone})` : ''}</p>
