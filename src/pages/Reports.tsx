@@ -10,6 +10,8 @@ import { Download, FileText } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
+import { formatEthiopian } from '@/lib/ethiopianDate';
+import { useI18n } from '@/lib/i18n';
 
 function downloadCsv(filename: string, rows: any[]) {
   const csv = Papa.unparse(rows);
@@ -44,6 +46,7 @@ function endOfPeriod(period: Period, ref: Date): Date {
 }
 
 export default function Reports() {
+  const { lang } = useI18n();
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   const [deliveryData, setDeliveryData] = useState<any[]>([]);
