@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Minus, Trash2, Printer, Settings as SettingsIcon, Receipt, Banknote, CreditCard, Wallet } from 'lucide-react';
+import { formatEthiopian } from '@/lib/ethiopianDate';
+import { useI18n } from '@/lib/i18n';
 
 interface Category { id: string; name: string; price_etb: number; photo_url: string | null; }
-interface CartItem { category_id: string; name: string; unit_price: number; quantity: number; }
+interface CartItem { category_id: string; name: string; unit_price: number; quantity: number; photo_url: string | null; }
 interface BankAccount { bank_name: string; account_number: string; account_holder: string; }
 interface CompanySettings {
   id?: string;
@@ -26,6 +28,7 @@ type PaymentMethod = 'cash' | 'bank' | 'card';
 
 export default function Cashier() {
   const { user } = useAuth();
+  const { lang } = useI18n();
   const { toast } = useToast();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -87,7 +90,7 @@ export default function Cashier() {
     setCart(prev => {
       const idx = prev.findIndex(i => i.category_id === c.id);
       if (idx >= 0) return prev.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it);
-      return [...prev, { category_id: c.id, name: c.name, unit_price: Number(c.price_etb), quantity: 1 }];
+      return [...prev, { category_id: c.id, name: c.name, unit_price: Number(c.price_etb), quantity: 1, photo_url: c.photo_url }];
     });
   };
   const updateQty = (id: string, delta: number) =>
