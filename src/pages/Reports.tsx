@@ -327,6 +327,70 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="cashier" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label>From</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateFrom, lang)}</p>
+            </div>
+            <div>
+              <Label>To</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <p className="mt-1 text-xs text-muted-foreground">{formatEthiopian(dateTo, lang)}</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => downloadCsv(`cashier_${dateFrom}_to_${dateTo}.csv`, cashierDailyRows.map(r => ({
+                'Sale #': r.saleNo,
+                'Date (Ethiopian)': formatEthiopian(r.date, lang),
+                'Date (GC)': r.date,
+                'Transactions': r.count,
+                'Subtotal (ETB)': r.subtotal.toFixed(2),
+                'Service (ETB)': r.service.toFixed(2),
+                'Total (ETB)': r.total.toFixed(2),
+              })))}
+            ><FileText className="mr-2 h-4 w-4" /> CSV</Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Days</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{cashierDailyRows.length}</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{cashierTxnCount}</div></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Income</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-success">{cashierTotal.toFixed(2)} ETB</div></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sale #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Transactions</TableHead>
+                    <TableHead>Subtotal (ETB)</TableHead>
+                    <TableHead>Service (ETB)</TableHead>
+                    <TableHead>Total (ETB)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cashierDailyRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No cashier sales in this range</TableCell></TableRow>
+                  ) : cashierDailyRows.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono">{r.saleNo}</TableCell>
+                      <TableCell>{formatEthiopian(r.date, lang)}</TableCell>
+                      <TableCell>{r.count}</TableCell>
+                      <TableCell>{r.subtotal.toFixed(2)}</TableCell>
+                      <TableCell>{r.service.toFixed(2)}</TableCell>
+                      <TableCell className="font-medium text-success">{r.total.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="orders" className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>
