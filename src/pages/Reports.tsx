@@ -102,9 +102,38 @@ export default function Reports() {
     setPriceHistory((data as any) ?? []);
   };
 
-  useEffect(() => { loadDeliveries(); }, [dateFrom, dateTo]);
+  const loadCashierSales = async () => {
+    const { data } = await supabase
+      .from('cashier_sales' as any)
+      .select('id, sale_date, total, subtotal, service_charge, created_at')
+      .gte('sale_date', dateFrom)
+      .lte('sale_date', dateTo)
+      .order('sale_date', { ascending: true })
+      .order('created_at', { ascending: true });
+    setCashierSales((data as any) ?? []);
+  };
+
+  useEffect(() => { loadDeliveries(); loadCashierSales(); }, [dateFrom, dateTo]);
   useEffect(() => { loadOrders(); }, [orderPeriod, orderRefDate]);
   useEffect(() => { loadPriceHistory(); }, []);
+
+  // Merge cashier sales by sale_date with daily-resetting #001 sequence
+  const cashierDailyRows = (() => {
+    const byDay: Record<string, { date: string; count: number; total: number; subtotal: number; service: number }> = {};
+    cashierSales.forEach((s: any) => {
+      const k = s.sale_date;
+      if (!byDay[k]) byDay[k] = { date: k, count: 0, total: 0, subtotal: 0, service: 0 };
+      byDay[k].count += 1;
+      byDay[k].total += Number(s.total || 0);
+      byDay[k].subtotal += Number(s.subtotal || 0);
+      byDay[k].service += Number(s.service_charge || 0);
+    });
+    return Object.values(byDay)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(r => ({ ...r, saleNo: '001' }));
+  })();
+  const cashierTotal = cashierDailyRows.reduce((s, r) => s + r.total, 0);
+  const cashierTxnCount = cashierDailyRows.reduce((s, r) => s + r.count, 0);
 
   // Aggregations for deliveries
   const deliveryRows = deliveryData.flatMap(d =>
