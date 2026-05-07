@@ -265,16 +265,6 @@ export default function Cashier() {
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Customer</Label>
-                <Input value={customerName} onChange={e => setCustomerName(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Phone</Label>
-                <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
                 <Label className="text-xs">Shift</Label>
                 <Select value={shift} onValueChange={(v: any) => setShift(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -301,6 +291,11 @@ export default function Cashier() {
               {cart.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">Cart is empty</p>}
               {cart.map(it => (
                 <div key={it.category_id} className="flex items-center gap-2 rounded border bg-card p-2">
+                  <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
+                    {it.photo_url
+                      ? <img src={it.photo_url} alt={it.name} className="h-full w-full object-cover" loading="lazy" />
+                      : <div className="flex h-full items-center justify-center text-[8px] text-muted-foreground">—</div>}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{it.name}</p>
                     <p className="text-xs text-muted-foreground">{it.unit_price.toFixed(2)} × {it.quantity}</p>
