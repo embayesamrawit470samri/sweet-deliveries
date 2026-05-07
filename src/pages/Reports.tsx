@@ -55,6 +55,7 @@ export default function Reports() {
   const [orderRefDate, setOrderRefDate] = useState(new Date().toISOString().split('T')[0]);
   const [orderData, setOrderData] = useState<any[]>([]);
   const [priceHistory, setPriceHistory] = useState<any[]>([]);
+  const [cashierSales, setCashierSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadDeliveries = async () => {
